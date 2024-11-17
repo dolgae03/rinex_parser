@@ -35,7 +35,6 @@ function process_and_save_rinex_files(input_dir, nav_dir, output_dir)
     end
 end
 
-
 function rinex_files = find_all_files_with_extension(root_dir, extension)
     % 특정 디렉토리와 모든 하위 디렉토리에서 주어진 확장자의 파일을 찾음
     % root_dir: 탐색을 시작할 최상위 디렉토리
@@ -145,6 +144,9 @@ function data = process_rinex_file(file_path, nav_file_path)
     data.antmod = antmod;
     data.codeC1 = codeC1;
     data.marker = marker;
+    data.active_constellation = cc.active_list;
+    data.constellation_name = cc.SYS_NAME;
+    data.constellation_idx = cc.IDX_SAT;
 
     % Add satellite positions and velocities to the data structure
     data.XS_tot1 = XS_tot1;

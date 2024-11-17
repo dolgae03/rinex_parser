@@ -241,98 +241,138 @@ else %RINEX v3.xx
                 end
         end
 
-        % Mask to filter all the possible observations
-        mask = false(16,nObsToRead);
-        mask(2:14,:) = true;
-        % preallocate a matrix of n strings (of length 14 characters)
-        % notice that each observation element has a max length of 13 char,
-        % the first character is added as a padding to separate the strings for
-        % the command sscanf that now can be launched once for each satellite
-        strObs = char(ones(14,nObsToRead)*32);
+        if sysId ~= 'R'
+            % Mask to filter all the possible observations
+            mask = false(16,nObsToRead);
+            mask(1:16,:) = true;
+            % preallocate a matrix of n strings (of length 14 characters)
+            % notice that each observation element has a max length of 13 char,
+            % the first character is added as a padding to separate the strings for
+            % the command sscanf that now can be launched once for each satellite
+            strObs = char(ones(16,nObsToRead)*32);
+    
+            % convert the lines read from the RINEX file to a single matrix
+            % containing all the observations
+            strObs(1:16,:) = (reshape(lin(mask(:)),16,nObsToRead));
+            fltObs = sscanf(strObs, '%f'); % read all the observations in the string
+            obsId = 0; % index of the current observation
+            % start parsing the observation string
 
-        % convert the lines read from the RINEX file to a single matrix
-        % containing all the observations
-        strObs(1:13,:) = (reshape(lin(mask(:)),13,nObsToRead));
-        fltObs = sscanf(strObs, '%f'); % read all the observations in the string
-        obsId = 0; % index of the current observation
-        % start parsing the observation string
-        for k = find(sum(strObs == ' ') < 14)
-                obsId = obsId+1;
-                %obs = sscanf(lin(mask(:,k)), '%f');
-                obs = fltObs(obsId);
+            target_indexing = find(sum(strObs == ' ') < 14);
+        elseif sysId == 'R'
+            % Mask to filter all the possible observations
+            mask = false(18,nObsToRead);
+            mask(1:18,:) = true;
+            % preallocate a matrix of n strings (of length 14 characters)
+            % notice that each observation element has a max length of 13 char,
+            % the first character is added as a padding to separate the strings for
+            % the command sscanf that now can be launched once for each satellite
+            strObs = char(ones(18,nObsToRead)*32);
+    
+            % convert the lines read from the RINEX file to a single matrix
+            % containing all the observations
+            strObs(3:18, 1) = lin(1:16);
+            
+            start_idx = find(lin(17:end) ~= ' ', 1, 'first') + 17 - 1;
+            end_idx = find(lin(start_idx:end) == ' ', 1, 'first') + start_idx - 2;
+            
+            if length(lin) < end_idx + 32
+                strObs(18 - (end_idx-start_idx): 18, 3) = lin(start_idx:end_idx);
+                strObs(3:18, 4) = lin(end_idx + 1: end_idx + 16);
+            else
+                strObs(18 - (end_idx-start_idx): 18, 2) = lin(start_idx:end_idx);
+                strObs(3:18, 3) = lin(end_idx + 1: end_idx + 16);
+                strObs(3:18, 4) = lin(end_idx + 17: end_idx + 32);
+            end
 
-                %check and assign the observation type
-                if (any(~(k-obs_col.(sysId).C1)))
-                    obs_struct.C1(index) = obs;
-                elseif (any(~(k-obs_col.(sysId).L1)))
-                    obs_struct.L1(index) = obs;
-                    if (linLength>=16*k)
-                        %convert signal-to-noise ratio
-                        % faster conversion of a single ASCII character into an int
-                        snr = mod((lin(16*k)-48),16);
-                        obs_tmp(index, 1) = 6 * snr;
-                    end
-                elseif (any(~(k-obs_col.(sysId).D1)))
-                    obs_struct.D1(index) = obs;
-                elseif (any(~(k-obs_col.(sysId).S1)))
-                    obs_struct.S1(index) = obs;
-                elseif (any(~(k-obs_col.(sysId).P1)))
-                    obs_struct.P1(index) = obs;
-                elseif (any(~(k-obs_col.(sysId).L2)))
-                    obs_struct.L2(index) = obs;
-                    if (linLength>=16*k)
-                        %convert signal-to-noise ratio
-                        % faster conversion of a single ASCII character into an int
-                        snr = mod((lin(16*k)-48),16);
-                        obs_tmp(index, 2) = 6 * snr;
-                    end
-                elseif (any(~(k-obs_col.(sysId).P2)))
-                    obs_struct.P2(index) = obs;
-                elseif (any(~(k-obs_col.(sysId).D2)))
-                    obs_struct.D2(index) = obs;
-                elseif (any(~(k-obs_col.(sysId).S2)))
-                    obs_struct.S2(index) = obs;
-                elseif (any(~(k-obs_col.(sysId).L3)))
-                    obs_struct.L3(index) = obs;
-                    if (linLength>=16*k)
-                        %convert signal-to-noise ratio
-                        % faster conversion of a single ASCII character into an int
-                        snr = mod((lin(16*k)-48),16);
-                        obs_tmp(index, 3) = 6 * snr;
-                    end
-                elseif (any(~(k-obs_col.(sysId).P3)))
-                    obs_struct.P3(index) = obs;
-                elseif (any(~(k-obs_col.(sysId).D3)))
-                    obs_struct.D3(index) = obs;
-                elseif (any(~(k-obs_col.(sysId).S3)))
-                    obs_struct.S3(index) = obs;
-                % For BDS
-                elseif (any(~(k-obs_col.(sysId).L4)))
-                    obs_struct.L2(index) = obs;
-                    if (linLength>=16*k)
-                        %convert signal-to-noise ratio
-                        % faster conversion of a single ASCII character into an int
-                        snr = mod((lin(16*k)-48),16);
-                        obs_tmp(index, 2) = 6 * snr;
-                    end
-                elseif (any(~(k-obs_col.(sysId).P4)))
-                    obs_struct.P2(index) = obs;
-                elseif (any(~(k-obs_col.(sysId).D4)))
-                    obs_struct.D2(index) = obs;
-                elseif (any(~(k-obs_col.(sysId).S4)))
-                    obs_struct.S2(index) = obs;
-                
-                %modifed
-                elseif (any(~(k-obs_col.(sysId).P5)))
-                    obs_struct.C1(index) = obs;
-                elseif (any(~(k-obs_col.(sysId).D5)))
-                    obs_struct.D1(index) = obs;
-                elseif (any(~(k-obs_col.(sysId).L5)))
-                    obs_struct.L1(index) = obs;
-                elseif (any(~(k-obs_col.(sysId).S5)))
-                    obs_struct.S1(index) = obs;
-                end
+
+
+            strObs(2:19, :) = strObs(1:18, :);
+            strObs(1, :) = [' ',' ',' ',' '];
+            fltObs = sscanf(strObs, '%f'); % read all the observations in the string
+            obsId = 0; % index of the current observation
+            % start parsing the observation string
+
+            target_indexing = find(sum(strObs == ' ') < 18);
         end
+        for k = target_indexing
+            obsId = obsId+1;
+            %obs = sscanf(lin(mask(:,k)), '%f');
+            obs = fltObs(obsId);
+
+            %check and assign the observation type
+            if (any(~(k-obs_col.(sysId).C1)))
+                obs_struct.C1(index) = obs;
+            elseif (any(~(k-obs_col.(sysId).L1)))
+                obs_struct.L1(index) = obs;
+                if (linLength>=16*k)
+                    %convert signal-to-noise ratio
+                    % faster conversion of a single ASCII character into an int
+                    snr = mod((lin(16*k)-48),16);
+                    obs_tmp(index, 1) = 6 * snr;
+                end
+            elseif (any(~(k-obs_col.(sysId).D1)))
+                obs_struct.D1(index) = obs;
+            elseif (any(~(k-obs_col.(sysId).S1)))
+                obs_struct.S1(index) = obs;
+            elseif (any(~(k-obs_col.(sysId).P1)))
+                obs_struct.P1(index) = obs;
+            elseif (any(~(k-obs_col.(sysId).L2)))
+                obs_struct.L2(index) = obs;
+                if (linLength>=16*k)
+                    %convert signal-to-noise ratio
+                    % faster conversion of a single ASCII character into an int
+                    snr = mod((lin(16*k)-48),16);
+                    obs_tmp(index, 2) = 6 * snr;
+                end
+            elseif (any(~(k-obs_col.(sysId).P2)))
+                obs_struct.P2(index) = obs;
+            elseif (any(~(k-obs_col.(sysId).D2)))
+                obs_struct.D2(index) = obs;
+            elseif (any(~(k-obs_col.(sysId).S2)))
+                obs_struct.S2(index) = obs;
+            elseif (any(~(k-obs_col.(sysId).L3)))
+                obs_struct.L3(index) = obs;
+                if (linLength>=16*k)
+                    %convert signal-to-noise ratio
+                    % faster conversion of a single ASCII character into an int
+                    snr = mod((lin(16*k)-48),16);
+                    obs_tmp(index, 3) = 6 * snr;
+                end
+            elseif (any(~(k-obs_col.(sysId).P3)))
+                obs_struct.P3(index) = obs;
+            elseif (any(~(k-obs_col.(sysId).D3)))
+                obs_struct.D3(index) = obs;
+            elseif (any(~(k-obs_col.(sysId).S3)))
+                obs_struct.S3(index) = obs;
+            % For BDS
+            elseif (any(~(k-obs_col.(sysId).L4)))
+                obs_struct.L2(index) = obs;
+                if (linLength>=16*k)
+                    %convert signal-to-noise ratio
+                    % faster conversion of a single ASCII character into an int
+                    snr = mod((lin(16*k)-48),16);
+                    obs_tmp(index, 2) = 6 * snr;
+                end
+            elseif (any(~(k-obs_col.(sysId).P4)))
+                obs_struct.P2(index) = obs;
+            elseif (any(~(k-obs_col.(sysId).D4)))
+                obs_struct.D2(index) = obs;
+            elseif (any(~(k-obs_col.(sysId).S4)))
+                obs_struct.S2(index) = obs;
+            
+            %modifed
+            elseif (any(~(k-obs_col.(sysId).P5)))
+                obs_struct.C1(index) = obs;
+            elseif (any(~(k-obs_col.(sysId).D5)))
+                obs_struct.D1(index) = obs;
+            elseif (any(~(k-obs_col.(sysId).L5)))
+                obs_struct.L1(index) = obs;
+            elseif (any(~(k-obs_col.(sysId).S5)))
+                obs_struct.S1(index) = obs;
+            end
+        end
+
         if (~obs_struct.S1(index))
             obs_struct.S1(index) = obs_tmp(index, 1);
         end

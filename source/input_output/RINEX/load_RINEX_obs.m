@@ -208,6 +208,10 @@ for f = 1 : nFiles
                 nEpochs = nEpochs  + 1;
             end
 
+            if k==14424
+                32;
+            end
+
             %read ROVER observations
             [cur_line, obs] = RINEX_get_obs(file_buf, cur_line, num_sat, sat, ...
                                             sat_types, obsColumns, nObsTypes, cc, ...
