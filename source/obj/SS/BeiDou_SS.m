@@ -64,8 +64,8 @@ classdef BeiDou_SS < Satellite_System
         % Array of the corresponding wavelength - lambda => wavelengths
         L_VEC = 299792458 ./ BeiDou_SS.F_VEC;
 
-        N_SAT = 47;       % Maximum number of satellite in the constellation
-        PRN = (1 : 47)';  % Satellites id numbers as defined in the constellation
+        N_SAT = 80;       % Maximum number of satellite in the constellation
+        PRN = (1 : 80)';  % Satellites id numbers as defined in the constellation
 
         % CODE2DATA ftp://igs.org/pub/data/format/rinex303.pdf
         CODE_RIN3_ATTRIB  = {'XIQ' 'XIQ', 'XIQ'}; % last letter of the observation code

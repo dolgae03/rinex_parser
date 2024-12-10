@@ -241,10 +241,10 @@ else %RINEX v3.xx
                 end
         end
 
-        if sysId ~= 'R'
+        if true || sysId ~= 'R'
             % Mask to filter all the possible observations
             mask = false(16,nObsToRead);
-            mask(1:16,:) = true;
+            mask(1:14,:) = true;
             % preallocate a matrix of n strings (of length 14 characters)
             % notice that each observation element has a max length of 13 char,
             % the first character is added as a padding to separate the strings for
@@ -253,7 +253,7 @@ else %RINEX v3.xx
     
             % convert the lines read from the RINEX file to a single matrix
             % containing all the observations
-            strObs(1:16,:) = (reshape(lin(mask(:)),16,nObsToRead));
+            strObs(1:14,:) = (reshape(lin(mask(:)),14,nObsToRead));
             fltObs = sscanf(strObs, '%f'); % read all the observations in the string
             obsId = 0; % index of the current observation
             % start parsing the observation string
@@ -262,7 +262,6 @@ else %RINEX v3.xx
         elseif sysId == 'R'
             % Mask to filter all the possible observations
             mask = false(18,nObsToRead);
-            mask(1:18,:) = true;
             % preallocate a matrix of n strings (of length 14 characters)
             % notice that each observation element has a max length of 13 char,
             % the first character is added as a padding to separate the strings for
@@ -271,18 +270,18 @@ else %RINEX v3.xx
     
             % convert the lines read from the RINEX file to a single matrix
             % containing all the observations
-            strObs(3:18, 1) = lin(1:16);
+            strObs(3:16, 1) = lin(1:14);
             
             start_idx = find(lin(17:end) ~= ' ', 1, 'first') + 17 - 1;
             end_idx = find(lin(start_idx:end) == ' ', 1, 'first') + start_idx - 2;
             
             if length(lin) < end_idx + 32
-                strObs(18 - (end_idx-start_idx): 18, 3) = lin(start_idx:end_idx);
-                strObs(3:18, 4) = lin(end_idx + 1: end_idx + 16);
+                strObs(18 - (end_idx-start_idx): 16, 3) = lin(start_idx:end_idx - 2);
+                strObs(3:16, 4) = lin(end_idx + 1: end_idx + 14);
             else
-                strObs(18 - (end_idx-start_idx): 18, 2) = lin(start_idx:end_idx);
-                strObs(3:18, 3) = lin(end_idx + 1: end_idx + 16);
-                strObs(3:18, 4) = lin(end_idx + 17: end_idx + 32);
+                strObs(18 - (end_idx-start_idx): 16, 2) = lin(start_idx:end_idx - 2);
+                strObs(3:16, 3) = lin(end_idx + 1: end_idx + 14);
+                strObs(3:16, 4) = lin(end_idx + 17: end_idx + 30);
             end
 
 
@@ -371,6 +370,10 @@ else %RINEX v3.xx
             elseif (any(~(k-obs_col.(sysId).S5)))
                 obs_struct.S1(index) = obs;
             end
+        end
+
+        if index > 150
+        1;
         end
 
         if (~obs_struct.S1(index))

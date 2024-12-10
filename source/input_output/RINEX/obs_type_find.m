@@ -231,11 +231,17 @@ else %RINEX v3.xx
                 idD5 = {};                               
                 %--------------------------------
             case 'C' %Compass/Beidou
-                idC1 = {'C1I';'C1Q';'C2I'};   %B1
+                idC1 = {'C1I';'C1Q';};   %B1
                 idP1 = {'...'};               %B1
-                idL1 = {'L1I';'L1Q';'L2I'};   %B1
-                idS1 = {'S1I';'S1Q';'S2I'};   %B1
-                idD1 = {'D1I';'D1Q';'D2I'};   %B1
+                idL1 = {'L1I';'L1Q';};   %B1
+                idS1 = {'S1I';'S1Q';};   %B1
+                idD1 = {'D1I';'D1Q';};   %B1
+
+                % idC1 = {'C1I';'C1Q';'C2I'};   %B1
+                % idP1 = {'...'};               %B1
+                % idL1 = {'L1I';'L1Q';'L2I'};   %B1
+                % idS1 = {'S1I';'S1Q';'S2I'};   %B1
+                % idD1 = {'D1I';'D1Q';'D2I'};   %B1
                 %--------------------------------
                 idL2 = {'L7I';'L7Q'};         %B2b
                 idP2 = {'C7I';'C7Q'};         %B2b

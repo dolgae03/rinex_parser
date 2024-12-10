@@ -90,6 +90,10 @@ function data = process_rinex_file(file_path, nav_file_path)
     XS_tot1 = NaN(size(pr1, 2), nSatTot, 3);
     VS_tot1 = NaN(size(pr1, 2), nSatTot, 3);
 
+    %LEAP SECONDS for gps time
+    % LEAP_SECOND = 18
+    % time_zero = time_zero + LEAP_SECOND;
+
     % Set up other parameters
     nsat = size(pr1, 1);
     time_rx = time_GPS + time_zero;

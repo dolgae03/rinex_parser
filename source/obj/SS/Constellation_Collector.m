@@ -53,7 +53,7 @@ classdef Constellation_Collector < Settings_Interface
         ID_IRNSS     = 6 % Id of IRNSS constellation for goGPS internal use
         ID_SBAS      = 7 % Id of SBAS constellation for goGPS internal use
 
-        IDX_SAT      = [1, 33, 60, 96, 103, 150, 150]
+        IDX_SAT      = [1, 33, 60, 96, 103, 183, 183]
 
         SYS_C        = 'GREJCIS'; % Array of constellation char ids GPS = 'G', GLONASS = 'R', ...
     end
