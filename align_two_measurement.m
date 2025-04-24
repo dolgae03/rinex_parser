@@ -1,6 +1,6 @@
 % 데이터 파일 경로
-data1_path = "D:\과제\삼성 과제\Data\Processed\baseline.mat";
-data2_path = "D:\과제\삼성 과제\Data\Processed\rover.mat";
+data1_path = "D:\과제\삼성 과제\Data\Processed\aligned\BMHR20430089R_2025-01-15_13-54-51_processed.mat";
+data2_path = "D:\과제\삼성 과제\Data\Processed\aligned\gnss_log_2025_01_15_13_53_27_processed.mat";
 
 % 데이터 로드
 data1 = load(data1_path);

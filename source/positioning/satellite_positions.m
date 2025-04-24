@@ -1,4 +1,4 @@
-function [XS, dtS, XS_tx, VS_tx, time_tx, no_eph, eclipsed, sys_idx] = satellite_positions(time_rx, pseudorange, sat, Eph, SP3, sbas, err_tropo, err_iono, dtR, frequencies, obs_comb, lambda, p_rate)
+function [XS, dtS, XS_tx, VS_tx, time_tx, no_eph, eclipsed, sys_idx, correspond_eph] = satellite_positions(time_rx, pseudorange, sat, Eph, SP3, sbas, err_tropo, err_iono, dtR, frequencies, obs_comb, lambda, p_rate)
 
 % SYNTAX:
 %   [XS, dtS, XS_tx, VS_tx, time_tx, no_eph, eclipsed, sys_idx] = satellite_positions(time_rx, pseudorange, sat, Eph, SP3, sbas, err_tropo, err_iono, dtR, frequencies, obs_comb, lambda, p_rate);
@@ -68,6 +68,7 @@ dtS     = zeros(nsat,1);
 XS      = zeros(nsat,3);
 XS_tx   = zeros(nsat,3);
 VS_tx   = zeros(nsat,3);
+correspond_eph = cell(nsat, 1);
 
 %satellites with no ephemeris available
 no_eph  = zeros(nsat,1);
@@ -84,10 +85,14 @@ for i = 1 : nsat
     %% Eph 30 idx is satellite own idx.
     k = find_eph(Eph, sat(i), time_rx);
     
+    
     if (isempty(k) & isempty(SP3))
         no_eph(i) = 1;
+        correspond_eph{i, 1} = NaN(33, 1)';
         continue
     end
+
+    correspond_eph{i, 1} = Eph(:,k)';
 
     %compute signal transmission time
 %     [time_tx(i,1), dtS(i,1)] = transmission_time(time_rx, pseudorange(i), sat(i), Eph(:,k), SP3, sbas, err_tropo(i), err_iono(i), dtR, frequencies, obs_comb, lambda(i,:));

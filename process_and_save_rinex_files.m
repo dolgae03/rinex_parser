@@ -107,10 +107,14 @@ function data = process_rinex_file(file_path, nav_file_path)
     [Eph, iono] = load_RINEX_nav(nav_file_path, cc, 0, 2);
     lambda = goGNSS.getGNSSWavelengths(Eph, [], nSatTot);
 
+    % % save('test.mat', "Eph", "iono")
+    
+    eph_saved = NaN(size(pr1, 2), nSatTot, 33); 
+
     % Calculate satellite positions and velocities for each time step
     for i = 1:size(pr1, 2)
         avail_sat1 = find(pr1(:, i)); % Find available satellites for the time step
-        [XS, dtS, XS_tx, VS_tx, time_tx, no_eph, eclipsed, sys_idx] = ...
+        [XS, dtS, XS_tx, VS_tx, time_tx, no_eph, eclipsed, sys_idx, loaded_eph] = ...
             satellite_positions(time_rx(i), pr1(:, i), avail_sat1, Eph, [], [], ...
             err_tropo, err_iono, dtR, 1, 'NONE', lambda, p_rate);
 
@@ -118,6 +122,8 @@ function data = process_rinex_file(file_path, nav_file_path)
             % Update XS_tot1 and VS_tot1 with positions and velocities
             XS_tot1(i, avail_sat1(j), :) = XS_tx(j, :); % at transmission time
             VS_tot1(i, avail_sat1(j), :) = VS_tx(j, :);
+
+            eph_saved(i, avail_sat1(j), :) = loaded_eph{j, 1};
         end
     end
 
@@ -151,6 +157,8 @@ function data = process_rinex_file(file_path, nav_file_path)
     data.active_constellation = cc.active_list;
     data.constellation_name = cc.SYS_NAME;
     data.constellation_idx = cc.IDX_SAT;
+    data.iono = iono;
+    data.eph = eph_saved;
 
     % Add satellite positions and velocities to the data structure
     data.XS_tot1 = XS_tot1;
