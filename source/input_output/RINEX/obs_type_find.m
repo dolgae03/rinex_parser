@@ -156,10 +156,10 @@ else %RINEX v3.xx
                 idS2 = {'S2W';'S2P';'S2C';'S2S';'S2L';'S2X'};    %L2,L2C
                 idD2 = {'D2W';'D2P';'D2C';'D2S';'D2L';'D2X'};    %L2,L2C
                 %--------------------------------
-                idP3 = {'C5Q'};               %L5
-                idL3 = {'L5Q'};               %L5
-                idS3 = {'S5Q'};               %L5
-                idD3 = {'D5Q'};               %L5
+                idP3 = {'C5Q';'C5X'};               %L5
+                idL3 = {'L5Q';'L5X'};               %L5
+                idS3 = {'S5Q';'S5X'};               %L5
+                idD3 = {'D5Q';'D5X'};               %L5
                 %--------------------------------
                 idP4 = {};               
                 idL4 = {};               
@@ -205,10 +205,10 @@ else %RINEX v3.xx
                 idS1 = {'S1X';'S1C'};         %E1
                 idD1 = {'D1X';'D1C'};         %E1
                 %--------------------------------
-                %idP2 = {'C5X';'C5Q'};        %E5a
-                %idL2 = {'L5X';'L5Q'};        %E5a
-                %idS2 = {'S5X';'S5Q'};        %E5a
-                %idD2 = {'D5X';'D5Q'};        %E5a
+                idP3 = {'C5X';'C5Q'};        %E5a
+                idL3 = {'L5X';'L5Q'};        %E5a
+                idS3 = {'S5X';'S5Q'};        %E5a
+                idD3 = {'D5X';'D5Q'};        %E5a
                 %--------------------------------
                 idP2 = {'C7X';'C7Q'};        %E5b
                 idL2 = {'L7X';'L7Q'};        %E5b
@@ -231,11 +231,11 @@ else %RINEX v3.xx
                 idD5 = {};                               
                 %--------------------------------
             case 'C' %Compass/Beidou
-                idC1 = {'C1I';'C1Q';};   %B1
+                idC1 = {'C1I';'C1Q';'C1D';'C2I'};   %B1
                 idP1 = {'...'};               %B1
-                idL1 = {'L1I';'L1Q';};   %B1
-                idS1 = {'S1I';'S1Q';};   %B1
-                idD1 = {'D1I';'D1Q';};   %B1
+                idL1 = {'L1I';'L1Q';'L1D';'L2I'};   %B1
+                idS1 = {'S1I';'S1Q';'S1D';'S2I'};   %B1
+                idD1 = {'D1I';'D1Q';'D1D';'D2I'};   %B1
 
                 % idC1 = {'C1I';'C1Q';'C2I'};   %B1
                 % idP1 = {'...'};               %B1

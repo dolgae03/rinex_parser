@@ -5,7 +5,7 @@ function process_and_save_rinex_files(input_dir, nav_dir, output_dir)
     % Add paths for necessary directories
     addpath(genpath(input_dir));
 
-    file_extension = '.24o';  % 찾을 파일의 확장자
+    file_extension = '.25o';  % 찾을 파일의 확장자
     rinex_files = find_all_files_with_extension(input_dir, file_extension);
     
     % Process each file and save output

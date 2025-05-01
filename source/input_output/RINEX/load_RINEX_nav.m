@@ -5,7 +5,8 @@ function [Eph, iono, flag_return] = load_RINEX_nav(filename, cc, flag_SP3, iono_
 %
 % INPUT:
 %   filename = RINEX navigation file
-%   cc = Constellation_Collector object, contains the satus of the satellite systems in use
+%   cc = Constellation_Collector object, contains the satus of the s
+% atellite systems in use
 %   flag_SP3 = boolean flag to indicate SP3 availability
 %   wait_dlg = optional handler to waitbar figure (optional)
 %
