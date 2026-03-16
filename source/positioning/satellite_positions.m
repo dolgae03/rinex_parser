@@ -1,7 +1,7 @@
-function [XS, dtS, XS_tx, VS_tx, time_tx, no_eph, eclipsed, sys_idx, correspond_eph] = satellite_positions(time_rx, pseudorange, sat, Eph, SP3, sbas, err_tropo, err_iono, dtR, frequencies, obs_comb, lambda, p_rate)
+function [XS, VS, dtS, XS_tx, VS_tx, time_tx, no_eph, eclipsed, sys_idx, correspond_eph] = satellite_positions(time_rx, pseudorange, sat, Eph, SP3, sbas, err_tropo, err_iono, dtR, frequencies, obs_comb, lambda, p_rate)
 
 % SYNTAX:
-%   [XS, dtS, XS_tx, VS_tx, time_tx, no_eph, eclipsed, sys_idx] = satellite_positions(time_rx, pseudorange, sat, Eph, SP3, sbas, err_tropo, err_iono, dtR, frequencies, obs_comb, lambda, p_rate);
+%   [XS, VS, dtS, XS_tx, VS_tx, time_tx, no_eph, eclipsed, sys_idx] = satellite_positions(time_rx, pseudorange, sat, Eph, SP3, sbas, err_tropo, err_iono, dtR, frequencies, obs_comb, lambda, p_rate);
 %
 % INPUT:
 %   time_rx     = reception time
@@ -66,6 +66,7 @@ nsat = length(sat);
 time_tx = zeros(nsat,1);
 dtS     = zeros(nsat,1);
 XS      = zeros(nsat,3);
+VS      = zeros(nsat,3);
 XS_tx   = zeros(nsat,3);
 VS_tx   = zeros(nsat,3);
 correspond_eph = cell(nsat, 1);
@@ -130,6 +131,7 @@ for i = 1 : nsat
             Omegae_dot = goGNSS.OMEGAE_DOT_GPS;
     end
     XS(i,:) = earth_rotation_correction(traveltime, XS_tx(i,:), Omegae_dot);
+    VS(i,:) = earth_rotation_correction(traveltime, VS_tx(i,:), Omegae_dot);
 
     if (~isempty(SP3))
         %check eclipse condition

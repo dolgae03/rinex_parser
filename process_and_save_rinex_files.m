@@ -1,6 +1,17 @@
 function process_and_save_rinex_files(input_dir, nav_dir, output_dir)
     % Suppress all warnings
     warning('off', 'all');
+
+    % --- 입력값이 모두 char인지 검사 ---
+    if ~ischar(input_dir)
+        error('input_dir must be a char array, but it is %s.', class(input_dir));
+    end
+    if ~ischar(nav_dir)
+        error('nav_dir must be a char array, but it is %s.', class(nav_dir));
+    end
+    if ~ischar(output_dir)
+        error('output_dir must be a char array, but it is %s.', class(output_dir));
+    end
     
     % Add paths for necessary directories
     addpath(genpath(input_dir));
@@ -88,7 +99,11 @@ function data = process_rinex_file(file_path, nav_file_path)
     % Initialize arrays for satellite positions and velocities
     nSatTot = cc.getNumSat();
     XS_tot1 = NaN(size(pr1, 2), nSatTot, 3);
+    XS_tot1_rot = NaN(size(pr1, 2), nSatTot, 3);
     VS_tot1 = NaN(size(pr1, 2), nSatTot, 3);
+    VS_tot1_rot = NaN(size(pr1, 2), nSatTot, 3);
+    SV_Clock_Bias = NaN(size(pr1, 2), nSatTot);
+    all_time_tx = NaN(size(pr1, 2), nSatTot);
 
     %LEAP SECONDS for gps time
     % LEAP_SECOND = 18
@@ -114,14 +129,18 @@ function data = process_rinex_file(file_path, nav_file_path)
     % Calculate satellite positions and velocities for each time step
     for i = 1:size(pr1, 2)
         avail_sat1 = find(pr1(:, i)); % Find available satellites for the time step
-        [XS, dtS, XS_tx, VS_tx, time_tx, no_eph, eclipsed, sys_idx, loaded_eph] = ...
+        [XS, VS, dtS, XS_tx, VS_tx, time_tx, no_eph, eclipsed, sys_idx, loaded_eph] = ...
             satellite_positions(time_rx(i), pr1(:, i), avail_sat1, Eph, [], [], ...
-            err_tropo, err_iono, dtR, 1, 'NONE', lambda, p_rate);
+                                err_tropo, err_iono, dtR, 1, 'NONE', lambda, p_rate);
 
         for j = 1:size(XS_tx, 1)
             % Update XS_tot1 and VS_tot1 with positions and velocities
             XS_tot1(i, avail_sat1(j), :) = XS_tx(j, :); % at transmission time
             VS_tot1(i, avail_sat1(j), :) = VS_tx(j, :);
+            XS_tot1_rot(i, avail_sat1(j), :) = XS(j, :); % at transmission time
+            VS_tot1_rot(i, avail_sat1(j), :) = VS(j, :);
+            SV_Clock_Bias(i, avail_sat1(j)) = dtS(j);
+            all_time_tx(i, avail_sat1(j)) = time_tx(j);
 
             eph_saved(i, avail_sat1(j), :) = loaded_eph{j, 1};
         end
@@ -160,10 +179,18 @@ function data = process_rinex_file(file_path, nav_file_path)
     data.iono = iono;
     data.eph = eph_saved;
 
+    data.sv_clock_bias = SV_Clock_Bias * 299792458.0;
+    data.time_tx = all_time_tx;
+
     % Add satellite positions and velocities to the data structure
     data.XS_tot1 = XS_tot1;
     data.VS_tot1 = VS_tot1;
+    data.XS_tot1_rot = XS_tot1_rot;
+    data.VS_tot1_rot = VS_tot1_rot;
 
     data.SVpos_x = squeeze(XS_tot1(:,:,1)); data.SVpos_y = squeeze(XS_tot1(:,:,2)); data.SVpos_z = squeeze(XS_tot1(:,:,3));
+    data.SVpos_x_rot = squeeze(XS_tot1_rot(:,:,1)); data.SVpos_y_rot = squeeze(XS_tot1_rot(:,:,2)); data.SVpos_z_rot = squeeze(XS_tot1_rot(:,:,3));
     data.SVvel_x = squeeze(VS_tot1(:,:,1)); data.SVvel_y = squeeze(VS_tot1(:,:,2)); data.SVvel_z = squeeze(VS_tot1(:,:,3));
+    data.SVvel_x_rot = squeeze(VS_tot1_rot(:,:,1)); data.SVvel_y_rot = squeeze(VS_tot1_rot(:,:,2)); data.SVvel_z_rot = squeeze(VS_tot1_rot(:,:,3));
+    
 end

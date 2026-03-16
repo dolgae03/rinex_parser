@@ -148,7 +148,7 @@ end
         end
 
         if (cc.getGPS.flag_enable || flag_mixed || only_iono)
-            if (exist([filename(1:end-1) 'n'],'file'))
+            if (exist([filename(1:end-1) 'n'],'file') || flag_mixed)
                 %parse RINEX navigation file (GPS) NOTE: filename expected to
                 %end with 'n' or 'N' (GPS) or with 'p' or 'P' (mixed GNSS)
                 if(~only_iono), log.addMessage(sprintf('%s',['Reading RINEX file ' filename ': ... '])); end

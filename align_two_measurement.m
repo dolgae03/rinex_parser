@@ -1,6 +1,6 @@
 % 데이터 파일 경로
-data1_path = "D:\과제\삼성 과제\Data\Processed\1차년도 Data 수집\Reciever\Opensky\reciever_opensky_2025_04_09_processed.mat";
-data2_path = "D:\과제\삼성 과제\Data\Processed\1차년도 Data 수집\Smartphone\OpenSky\smartphone_opensky_2025_04_29_processed.mat";
+data1_path = "D:\과제\삼성 과제\Data\Processed\1차년도 Data 수집\BMHR21030714D_2025-05-07_17-21-04_processed.mat";
+data2_path = "C:\Users\mskim\Desktop\workspace\samsung_analyze_tool\data\obs_real\29742_gnss_log_2025_05_07_17_22_10.mat";
 
 % 데이터 로드
 data1 = load(data1_path);
