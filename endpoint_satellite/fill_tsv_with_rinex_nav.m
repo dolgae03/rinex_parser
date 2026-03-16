@@ -33,7 +33,8 @@ function summary = fill_tsv_with_rinex_nav(tsv_file, nav_file, out_tsv)
         end
     end
 
-    cc = Constellation_Collector(build_active_constellation_flags(T));
+    % Keep goGPS's historical fixed satellite indexing layout.
+    cc = Constellation_Collector([1, 1, 1, 1, 1, 0, 0]);
     [Eph, iono] = load_RINEX_nav(nav_file, cc, 0, 0); %#ok<ASGLU>
     if isempty(Eph) || size(Eph, 1) < 33
         error(['Navigation parsing did not produce a valid ephemeris matrix for %s. ' ...
@@ -103,34 +104,6 @@ function summary = fill_tsv_with_rinex_nav(tsv_file, nav_file, out_tsv)
     summary.finite_sv_clock_drift_rows = nnz(isfinite(T.sv_clock_drift));
 end
 
-function active_list = build_active_constellation_flags(T)
-    active_list = false(1, 7);
-    constellation_values = unique(double(T.constellation(isfinite(double(T.constellation)))));
-
-    for i = 1:numel(constellation_values)
-        switch constellation_values(i)
-            case 0
-                active_list(1) = true; % GPS
-            case 3
-                active_list(2) = true; % GLONASS
-            case 1
-                active_list(3) = true; % Galileo
-            case 4
-                active_list(4) = true; % QZSS
-            case 2
-                active_list(5) = true; % BeiDou
-            case 6
-                active_list(6) = true; % IRNSS
-            case 5
-                active_list(7) = true; % SBAS
-        end
-    end
-
-    if ~any(active_list)
-        active_list(1:5) = true;
-    end
-end
-
 function [sat_list, sat_row_map, pseudorange_vec] = build_epoch_satellite_inputs(T, row_idx, cc, nSatTot)
     pseudorange_vec = nan(nSatTot, 1);
     sat_row_map = cell(nSatTot, 1);
@@ -181,36 +154,19 @@ function [sat_list, sat_row_map, pseudorange_vec] = build_epoch_satellite_inputs
 end
 
 function sat_id = map_to_gogps_satellite_index(constellation, prn, cc)
-    sys_char = map_user_constellation_to_system_char(constellation);
-    if sys_char == '?'
-        sat_id = nan;
-        return;
-    end
-
-    sat_id = find(cc.prn(:) == prn & cc.system(:) == sys_char, 1, 'first');
-    if isempty(sat_id)
-        sat_id = nan;
-    end
-end
-
-function sys_char = map_user_constellation_to_system_char(constellation)
     switch constellation
         case 0
-            sys_char = 'G';
+            sat_id = cc.IDX_SAT(cc.ID_GPS) + prn - 1;
         case 1
-            sys_char = 'E';
+            sat_id = cc.IDX_SAT(cc.ID_GALILEO) + prn - 1;
         case 2
-            sys_char = 'C';
+            sat_id = cc.IDX_SAT(cc.ID_BEIDOU) + prn - 1;
         case 3
-            sys_char = 'R';
+            sat_id = cc.IDX_SAT(cc.ID_GLONASS) + prn - 1;
         case 4
-            sys_char = 'J';
-        case 5
-            sys_char = 'S';
-        case 6
-            sys_char = 'I';
+            sat_id = cc.IDX_SAT(cc.ID_QZSS) + prn - 1;
         otherwise
-            sys_char = '?';
+            sat_id = nan;
     end
 end
 

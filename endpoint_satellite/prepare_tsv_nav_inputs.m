@@ -25,7 +25,7 @@ function [tsv_file, nav_file, output_tsv] = prepare_tsv_nav_inputs(endpoint_root
     end
 
     [~, name, ext] = fileparts(tsv_file);
-    output_tsv = fullfile(output_dir, [name '_filled' ext]);
+    output_tsv = fullfile(output_dir, [name '_with_sv_pos' ext]);
 
     fprintf('TSV input file: %s\n', tsv_file);
     fprintf('Navigation RINEX file: %s\n', nav_file);
