@@ -6,6 +6,8 @@ custom/
 endpoint_satellite/test_input/
 endpoint_satellite/test_run_output/
 endpoint_satellite/tmp_matlab_prefs/
+endpoint_satellite/nav_cache/
+endpoint_satellite/output/
 handoff/
 *.csv
 *.mat
@@ -19,6 +21,8 @@ receiver_opensky_0514.25o
 *.25N
 *.25p
 *.25P
+*.gz
+*.GZ
 *.rnx
 *.RNX
 *.obs

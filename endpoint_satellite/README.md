@@ -2,16 +2,29 @@
 
 This folder now contains only the active TSV + navigation RINEX endpoint.
 
+## Folder Layout
+
+- `data/`: input TSV files only
+- `nav/`: user-provided local navigation RINEX files
+- `nav_cache/`: automatically downloaded mixed navigation files
+- `output/`: filled TSV outputs
+
 ## Files
 
-- `prepare_tsv_nav_inputs.m`: discovers `test.tsv` and the navigation RINEX file under `endpoint_satellite/data`
+- `prepare_tsv_nav_inputs.m`: discovers `data/*.tsv`, reuses a matching local navigation RINEX from `nav/`, or triggers automatic download
+- `resolve_or_download_mixed_nav.m`: infers the TSV day range and downloads cached mixed navigation RINEX files when needed
 - `fill_tsv_with_rinex_nav.m`: fills missing satellite position, velocity, clock bias, and clock drift fields
 - `run_tsv_nav_endpoint.bat`: Windows launcher
 - `run_tsv_nav_endpoint_batch.m`: MATLAB batch entrypoint
-- `run_tsv_nav_current_test.m`: simple MATLAB runner for local testing
 
 ## Notes
 
 - Existing goGPS engine files under `source/` are untouched.
 - This endpoint uses `test.tsv + navigation RINEX` only.
-- Output is written to `endpoint_satellite/tsv_nav_output/`.
+- Put TSV inputs in `endpoint_satellite/data/`.
+- Put local navigation RINEX files in `endpoint_satellite/nav/`.
+- If no matching navigation file is found there, the wrapper reads the TSV time span and downloads mixed navigation files into `endpoint_satellite/nav_cache/`.
+- Downloaded mixed navigation files are normalized to a goGPS-compatible filename ending in `p` so the legacy parser treats them as mixed nav.
+- Mixed navigation files are also filtered down to only the constellation systems actually requested by the TSV.
+- SBAS is currently blocked at the wrapper layer because the legacy goGPS mixed-nav parser crashes on SBAS records.
+- Output is written to `endpoint_satellite/output/`.
