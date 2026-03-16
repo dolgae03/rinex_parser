@@ -14,11 +14,10 @@ if not exist "%MATLAB_PATH%" (
 set "CALL_DIR=%~dp0"
 cd /d "%CALL_DIR%\.."
 
-if not "%~1"=="" set "SAT_ENDPOINT_INPUT_DIR=%~1"
+if not "%~1"=="" set "SAT_ENDPOINT_TSV_FILE=%~1"
 if not "%~2"=="" set "SAT_ENDPOINT_NAV_FILE=%~2"
-if not "%~3"=="" set "SAT_ENDPOINT_OUTPUT_DIR=%~3"
-if not "%~4"=="" set "SAT_ENDPOINT_DISPLAY_ROWS=%~4"
+if not "%~3"=="" set "SAT_ENDPOINT_OUTPUT_TSV=%~3"
 
-"%MATLAB_PATH%" -batch "cd('C:/Users/mskim/Desktop/workspace/goGPS_loadRinex/endpoint_satellite'); run_satellite_endpoint_batch"
+"%MATLAB_PATH%" -batch "cd('C:/Users/mskim/Desktop/workspace/goGPS_loadRinex/endpoint_satellite'); run_tsv_nav_endpoint_batch"
 
 endlocal
