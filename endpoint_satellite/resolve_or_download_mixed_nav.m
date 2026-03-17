@@ -51,10 +51,11 @@ function requested_systems = infer_requested_systems(tsv_file)
             case 4
                 requested_systems(end + 1) = 'J'; %#ok<AGROW>
             case 5
-                error(['The TSV requests SBAS constellation data, but the current goGPS navigation parser ' ...
-                       'fails on mixed-nav SBAS records. Wrapper-level filtering cannot safely enable SBAS.']);
+                fprintf(['Ignoring SBAS rows while selecting navigation systems because the legacy goGPS ' ...
+                         'mixed-nav parser fails on SBAS ephemeris records. SBAS rows will remain unfilled.\n']);
             case 6
-                requested_systems(end + 1) = 'I'; %#ok<AGROW>
+                fprintf(['Ignoring IRNSS rows while selecting navigation systems because the current wrapper ' ...
+                         'does not yet compute IRNSS satellite states. IRNSS rows will remain unfilled.\n']);
         end
     end
 

@@ -1,16 +1,40 @@
+# MATLAB / project-generated outputs
 output/
 data_rooftop/
 data_hk/
 custom/
+handoff/
 *.asv
+*.mat
+*.csv
+
+# Python caches / local environments
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+.venv*/
+venv/
+env/
+.mypy_cache/
+.pytest_cache/
+
+# API server runtime files
+api_server_work/
+
+# Endpoint local inputs / caches / outputs
+endpoint_satellite/data/
+endpoint_satellite/nav/
+endpoint_satellite/nav_cache/
+endpoint_satellite/output/
 endpoint_satellite/test_input/
 endpoint_satellite/test_run_output/
 endpoint_satellite/tmp_matlab_prefs/
-endpoint_satellite/nav_cache/
-endpoint_satellite/output/
-handoff/
-*.csv
-*.mat
+endpoint_satellite/*.25p
+endpoint_satellite/*.25P
+
+# GNSS / RINEX / handoff data files
 receiver_opensky_0514.25o
 *.tsv
 *.zip
@@ -27,4 +51,3 @@ receiver_opensky_0514.25o
 *.RNX
 *.obs
 *.OBS
-endpoint_satellite/data/

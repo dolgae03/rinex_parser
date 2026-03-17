@@ -26,5 +26,5 @@ This folder now contains only the active TSV + navigation RINEX endpoint.
 - If no matching navigation file is found there, the wrapper reads the TSV time span and downloads mixed navigation files into `endpoint_satellite/nav_cache/`.
 - Downloaded mixed navigation files are normalized to a goGPS-compatible filename ending in `p` so the legacy parser treats them as mixed nav.
 - Mixed navigation files are also filtered down to only the constellation systems actually requested by the TSV.
-- SBAS is currently blocked at the wrapper layer because the legacy goGPS mixed-nav parser crashes on SBAS records.
+- SBAS and IRNSS rows are preserved in the TSV, but the current wrapper skips them during navigation loading, so those rows remain unfilled.
 - Output is written to `endpoint_satellite/output/` with the suffix `_with_sv_pos.tsv`.
