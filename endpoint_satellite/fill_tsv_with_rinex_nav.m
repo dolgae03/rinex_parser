@@ -26,7 +26,9 @@ function summary = fill_tsv_with_rinex_nav(tsv_file, nav_file, out_tsv)
 
     target_vars = {'sv_pos_x', 'sv_pos_y', 'sv_pos_z', ...
                    'sv_vel_x', 'sv_vel_y', 'sv_vel_z', ...
-                   'sv_clock_bias', 'sv_clock_drift'};
+                   'sv_clock_bias', 'sv_clock_drift', ...
+                   'iono_a0', 'iono_a1', 'iono_a2', 'iono_a3', ...
+                   'iono_b0', 'iono_b1', 'iono_b2', 'iono_b3'};
     for i = 1:numel(target_vars)
         if ~ismember(target_vars{i}, T.Properties.VariableNames)
             T.(target_vars{i}) = nan(height(T), 1);
@@ -35,11 +37,12 @@ function summary = fill_tsv_with_rinex_nav(tsv_file, nav_file, out_tsv)
 
     % Keep goGPS's historical fixed satellite indexing layout.
     cc = Constellation_Collector([1, 1, 1, 1, 1, 0, 0]);
-    [Eph, iono] = load_RINEX_nav(nav_file, cc, 0, 0); %#ok<ASGLU>
+    [Eph, iono] = load_RINEX_nav(nav_file, cc, 0, 0);
     if isempty(Eph) || size(Eph, 1) < 33
         error(['Navigation parsing did not produce a valid ephemeris matrix for %s. ' ...
                'For mixed navigation files, goGPS expects a filename ending in ''p'' (for example .25p).'], nav_file);
     end
+    T = fill_iono_coefficients(T, iono);
 
     nSatTot = cc.getNumSat();
     lambda = goGNSS.getGNSSWavelengths(Eph, [], nSatTot);
@@ -102,6 +105,7 @@ function summary = fill_tsv_with_rinex_nav(tsv_file, nav_file, out_tsv)
     summary.finite_sv_vel_rows = nnz(isfinite(T.sv_vel_x) & isfinite(T.sv_vel_y) & isfinite(T.sv_vel_z));
     summary.finite_sv_clock_bias_rows = nnz(isfinite(T.sv_clock_bias));
     summary.finite_sv_clock_drift_rows = nnz(isfinite(T.sv_clock_drift));
+    summary.filled_iono_rows = nnz(isfinite(T.iono_a0) | isfinite(T.iono_b0));
 end
 
 function [sat_list, sat_row_map, pseudorange_vec] = build_epoch_satellite_inputs(T, row_idx, cc, nSatTot)
@@ -167,6 +171,25 @@ function sat_id = map_to_gogps_satellite_index(constellation, prn, cc)
             sat_id = cc.IDX_SAT(cc.ID_QZSS) + prn - 1;
         otherwise
             sat_id = nan;
+    end
+end
+
+function T = fill_iono_coefficients(T, iono)
+    if isempty(iono) || numel(iono) < 8 || ~any(isfinite(double(iono)))
+        return;
+    end
+
+    coeff_names = {'iono_a0', 'iono_a1', 'iono_a2', 'iono_a3', ...
+                   'iono_b0', 'iono_b1', 'iono_b2', 'iono_b3'};
+    coeff_values = double(iono(:)');
+    coeff_values = coeff_values(1:8);
+
+    for idx = 1:numel(coeff_names)
+        current_values = double(T.(coeff_names{idx}));
+        replace_mask = ~isfinite(current_values) | current_values == 0;
+        if any(replace_mask) && isfinite(coeff_values(idx))
+            T.(coeff_names{idx})(replace_mask) = coeff_values(idx);
+        end
     end
 end
 

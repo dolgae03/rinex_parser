@@ -13,7 +13,7 @@ This folder now contains only the active TSV + navigation RINEX endpoint.
 
 - `prepare_tsv_nav_inputs.m`: discovers `data/*.tsv`, reuses a matching local navigation RINEX from `nav/`, or triggers automatic download
 - `resolve_or_download_mixed_nav.m`: infers the TSV day range and downloads cached mixed navigation RINEX files when needed
-- `fill_tsv_with_rinex_nav.m`: fills missing satellite position, velocity, clock bias, and clock drift fields
+- `fill_tsv_with_rinex_nav.m`: fills missing satellite position, velocity, clock bias, clock drift, and Klobuchar coefficient columns (`iono_a0..iono_b3`)
 - `run_tsv_nav_endpoint.bat`: Windows launcher
 - `run_tsv_nav_endpoint_batch.m`: MATLAB batch entrypoint
 
@@ -27,4 +27,6 @@ This folder now contains only the active TSV + navigation RINEX endpoint.
 - Downloaded mixed navigation files are normalized to a goGPS-compatible filename ending in `p` so the legacy parser treats them as mixed nav.
 - Mixed navigation files are also filtered down to only the constellation systems actually requested by the TSV.
 - SBAS and IRNSS rows are preserved in the TSV, but the current wrapper skips them during navigation loading, so those rows remain unfilled.
+- Klobuchar coefficients are copied from the resolved navigation file into `iono_a0..iono_b3` when those TSV columns are missing, `nan`, or placeholder `0`.
+- The wrapper does not yet compute per-row ionospheric range correction, because that needs receiver position and satellite azimuth/elevation in addition to the broadcast coefficients.
 - Output is written to `endpoint_satellite/output/` with the suffix `_with_sv_pos.tsv`.
