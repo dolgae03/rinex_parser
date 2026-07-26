@@ -23,6 +23,7 @@ from dataclasses import replace
 from pathlib import Path
 
 from .core.calibration import calibrate, measurement_residuals, outlier_catalog
+from .core.clock_analysis import analyze_clock_stability
 from .core.detectors import DetectorConfig
 from .core.experiment import compare_ionosphere, constellation_ablation, run_experiment
 from .core.iono_free import form_iono_free
@@ -69,6 +70,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
                    help="run on the dual-frequency (L1/L5) ionosphere-free combination")
     p.add_argument("--compare-iono", action="store_true",
                    help="compare the nav solution under none/tropo/klobuchar/iono-free")
+    p.add_argument("--clock-analysis", action="store_true",
+                   help="analyze receiver clock-drift instability vs horizontal error")
 
     p.add_argument("--no-ablation", action="store_true")
     p.add_argument("--no-calibrate", action="store_true",
@@ -152,6 +155,12 @@ def main(argv=None) -> int:
         calibration = calibrate(residuals)
         catalog = outlier_catalog(residuals, k=args.residual_k, mad_floor_m=args.mad_floor)
 
+    clock = None
+    if args.clock_analysis:
+        print("[run] clock-drift stability analysis ...")
+        clock = analyze_clock_stability(epochs, truth, wls_cfg=wls_cfg, dcfg=dcfg,
+                                        match_tolerance_sec=args.match_tolerance)
+
     meta = {
         "measurements": str(args.measurements),
         "truth": truth_desc,
@@ -173,7 +182,7 @@ def main(argv=None) -> int:
     meta["runtime_sec"] = round(time.time() - t0, 2)
     paths = write_report(args.output_dir, result, ablation_rows=ablation, meta=meta,
                          make_plots=args.matplotlib_plots, calibration=calibration,
-                         catalog=catalog)
+                         catalog=catalog, clock=clock)
     if iono_cmp is not None:
         paths.update(write_iono_comparison(args.output_dir, iono_cmp))
 
@@ -184,6 +193,19 @@ def main(argv=None) -> int:
         print(f"{r['detector']:<24}{_n(r['horizontal_rmse_m']):>10}{_n(r['horizontal_p95_m']):>9}"
               f"{_n(r['vertical_rmse_m']):>10}{_n(r['availability_pct'],1):>8}"
               f"{_n(r['mean_sats_used'],1):>6}{r['signal_rejections']:>7}{_n(r['improvement_pct'],1):>8}")
+    if clock is not None and clock.n_epochs:
+        ppm = clock.median_drift_mps / 299792458.0 * 1e6 if clock.median_drift_mps == clock.median_drift_mps else float("nan")
+        print("\n=== Clock-drift stability vs horizontal error ===")
+        print(f"  median drift {_n(clock.median_drift_mps,1)} m/s (~{_n(ppm,3)} ppm); "
+              f"{clock.n_anomalies}/{clock.n_epochs} anomalies (instability > {_n(clock.instability_threshold_m,1)} m)")
+        print(f"  corr(instability, horizontal err): pearson={_n(clock.pearson_r)}  spearman={_n(clock.spearman_r)}")
+        print(f"  horizontal error   stable={_n(clock.stable_mean_h_m)} m   unstable={_n(clock.unstable_mean_h_m)} m")
+        sr = clock.spearman_r
+        verdict = ("weak/no correlation -> clock-drift instability does NOT drive horizontal error"
+                   if not (sr == sr) or abs(sr) < 0.2 else
+                   "correlation present -> clock instability may affect the horizontal solution")
+        print(f"  verdict: {verdict}")
+
     if iono_cmp is not None:
         print("\n=== Horizontal nav solution by ionosphere treatment (detector=combined) ===")
         print(f"{'mode':<12}{'hRMSE[m]':>10}{'hCEP95[m]':>11}{'vRMSE[m]':>10}{'vMean[m]':>10}{'avail%':>8}{'sats':>6}")

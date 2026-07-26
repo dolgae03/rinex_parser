@@ -1,5 +1,6 @@
 """Business logic: WLS, outlier detectors, error metrics, experiments. No I/O."""
 
+from .clock_analysis import ClockAnalysis, analyze_clock_stability
 from .detectors import DETECTORS, DetectorConfig
 from .experiment import (
     DetectorRun,
@@ -24,6 +25,8 @@ __all__ = [
     "run_experiment",
     "constellation_ablation",
     "compare_ionosphere",
+    "analyze_clock_stability",
+    "ClockAnalysis",
     "form_iono_free",
     "form_iono_free_epoch",
     "ExperimentResult",

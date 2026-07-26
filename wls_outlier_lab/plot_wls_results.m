@@ -219,6 +219,51 @@ function plot_wls_results(output_dir)
         exportgraphics(f6, fullfile(output_dir, 'matlab_iono_comparison.png'), 'Resolution', 130);
     end
 
+    % ---- Figure 7: clock-drift stability vs horizontal error (선택) ------
+    ck_file = fullfile(output_dir, 'clock_analysis.csv');
+    if isfile(ck_file)
+        ck = readtable(ck_file, 'VariableNamingRule', 'preserve');
+        t0 = min(ck.t_sec);
+        tt = ck.t_sec - t0;
+        anom = ck.is_anomaly == 1;
+        f7 = figure('Color', 'w', 'Name', 'Clock stability', 'Position', [60 60 1200 780]);
+
+        subplot(2, 2, 1);
+        plot(tt, ck.drift_mps, '-', 'Color', BLUE, 'LineWidth', 0.8); grid on;
+        xlabel('time since start [s]'); ylabel('clock drift [m/s]');
+        title('Receiver clock drift');
+
+        subplot(2, 2, 2);
+        plot(tt, ck.instability_m, '-', 'Color', [0.4 0.4 0.4], 'LineWidth', 0.7); hold on; grid on;
+        scatter(tt(anom), ck.instability_m(anom), 40, 'r', 'filled');
+        xlabel('time since start [s]'); ylabel('clock instability [m]');
+        title(sprintf('Clock instability (%d anomalies)', nnz(anom)));
+
+        m = isfinite(ck.instability_m) & isfinite(ck.horizontal_error_m);
+        subplot(2, 2, 3);
+        scatter(ck.instability_m(m), ck.horizontal_error_m(m), 12, RED, 'filled', ...
+                'MarkerFaceAlpha', 0.4); grid on;
+        r = corrcoef(ck.instability_m(m), ck.horizontal_error_m(m));
+        xlabel('clock instability [m]'); ylabel('horizontal error [m]');
+        title(sprintf('Instability vs horizontal error  (Pearson r = %.3f)', r(1, 2)));
+
+        subplot(2, 2, 4);
+        iv = ck.instability_m(m); hv = ck.horizontal_error_m(m);
+        q = quantile(iv, [0 .25 .5 .75 1]); mh = zeros(1, 4);
+        for k = 1:4
+            if k < 4, sel = iv >= q(k) & iv < q(k+1); else, sel = iv >= q(k) & iv <= q(k+1); end
+            mh(k) = mean(hv(sel));
+        end
+        bar(mh); grid on; set(gca, 'XTickLabel', {'Q1','Q2','Q3','Q4'});
+        xlabel('clock-instability quartile (low->high)'); ylabel('mean horizontal error [m]');
+        title('Horizontal error by clock-instability quartile');
+
+        sgtitle('Receiver clock-drift stability vs horizontal navigation error');
+        exportgraphics(f7, fullfile(output_dir, 'matlab_clock_stability.png'), 'Resolution', 130);
+        fprintf('clock: median drift %.1f m/s, %d anomalies, Pearson r(inst,herr)=%.3f\n', ...
+                median(ck.drift_mps, 'omitnan'), nnz(anom), r(1, 2));
+    end
+
     fprintf('best detector: %s | H-RMSE %.2f m, CEP95 %.2f m, V-RMSE %.1f m\n', ...
             best, hrmse, cep95, vrmse);
     fprintf('saved matlab_*.png to %s\n', output_dir);

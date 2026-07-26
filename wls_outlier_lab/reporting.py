@@ -39,6 +39,7 @@ def write_report(
     make_plots: bool = True,
     calibration: Optional[object] = None,
     catalog: Optional[Dict[str, object]] = None,
+    clock: Optional[object] = None,
 ) -> Dict[str, str]:
     out = Path(output_dir)
     out.mkdir(parents=True, exist_ok=True)
@@ -56,6 +57,7 @@ def write_report(
         "outlier_catalog_summary": (
             {k: v for k, v in catalog.items() if k != "rows"} if catalog is not None else None
         ),
+        "clock_stability": clock.summary() if clock is not None else None,
         "detector_comparison": comparison,
         "detectors": {
             name: {
@@ -131,6 +133,18 @@ def write_report(
             w.writeheader()
             w.writerows(rows)
         paths["blunder_catalog"] = str(cat_path)
+
+    # --- clock stability (per-epoch clock, drift, instability) -----------
+    if clock is not None and clock.points:
+        clk_path = out / "clock_analysis.csv"
+        with clk_path.open("w", newline="", encoding="utf-8") as fh:
+            w = csv.writer(fh)
+            w.writerow(["t_sec", "dt_s", "clk_m", "drift_mps", "instability_m",
+                        "is_anomaly", "horizontal_error_m"])
+            for p in clock.points:
+                w.writerow([f"{p.t_sec:.3f}", _r(p.dt_s, 3), _r(p.clk_m, 3), _r(p.drift_mps, 4),
+                            _r(p.instability_m, 4), int(p.is_anomaly), _r(p.horizontal_error_m, 4)])
+        paths["clock_analysis"] = str(clk_path)
 
     # --- per-epoch errors for baseline and best --------------------------
     for tag in {result.baseline_name, best}:

@@ -151,6 +151,27 @@ measurements arrive. On the validation log 6.8% of obs are flagged; QZSS is 67%
 (satellites QZSS-3 and QZSS-4, the broken ephemerides), the rest are low-elevation
 BeiDou near the horizon.
 
+## Clock-drift stability vs horizontal error (`core/clock_analysis.py`, `--clock-analysis`)
+
+Does the phone's clock-drift instability hurt the (horizontal) solution? From the
+per-epoch WLS clock bias we form drift `d(clk)/dt` and an instability metric
+(departure from a constant-drift extrapolation, in metres), flag anomalies, and
+correlate instability with the horizontal error vs truth. On the validation log:
+
+- clock drift ≈ −242.6 m/s (≈ −0.81 ppm), instability mostly < 5 m with 17/359
+  anomaly spikes (up to ~35 m), clustered in one stretch of the drive;
+- correlation of instability with horizontal error: **Pearson −0.00, Spearman 0.08**;
+  horizontal error by instability quartile is flat (~2.0 / 1.9 / 2.2 / 2.2 m);
+  stable vs unstable epochs: 2.10 vs 1.88 m.
+
+**Verdict: clock-drift instability does not drive the horizontal error here.** The
+per-epoch WLS re-estimates the clock every epoch and it is geometrically almost
+orthogonal to the horizontal (it maps into the vertical), so the clock absorbs
+its own instability. The pipeline still flags clock anomalies and would surface a
+coupling if one existed. Outputs: `clock_analysis.csv` + `clock_stability` in
+`summary.json`; `plot_wls_results.m` draws `matlab_clock_stability.png` (drift,
+instability with anomalies, instability-vs-error scatter, quartile bars).
+
 ## Applying it to the `samsung_3rd` Novatel session
 
 `samsung_3rd/21-sample_novatel_log/` supplies the **truth** (RTK BESTPOS,
