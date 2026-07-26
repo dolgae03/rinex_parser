@@ -31,7 +31,7 @@ from typing import Dict, Iterable, List, Optional, Sequence, Set, Tuple
 import numpy as np
 
 from ..types import SatObs, WlsSolution
-from . import frames
+from . import atmosphere, frames
 
 Key = Tuple[int, int, int]      # signal identity (constellation, prn, freq_hz)
 SatId = Tuple[int, int]         # satellite identity (constellation, prn) — rejection unit
@@ -104,7 +104,12 @@ class WeightConfig:
 class WlsConfig:
     weights: WeightConfig = None
     apply_sagnac: bool = True
-    apply_iono: bool = True  # subtract SatObs.iono_delay_m when present
+    # Troposphere (Saastamoinen) is a clean win and on by default. Broadcast
+    # Klobuchar ionosphere is OFF by default: it is a crude single-frequency model
+    # and trades horizontal accuracy for vertical here (see README). The robust
+    # fix, given this data has L1+L5, is a dual-frequency iono-free combination.
+    apply_tropo: bool = True
+    apply_iono: bool = False  # ionosphere: SatObs.iono_delay_m if filled, else Klobuchar
     max_iterations: int = 15
     convergence_m: float = 1e-2
     reference_constellation: Optional[int] = 0  # GPS; falls back to most-populous
@@ -186,14 +191,40 @@ def solve_epoch(
     n = len(signals)
     sv0 = np.array([o.sv_pos for o in signals], dtype=float)          # (n,3)
     L_obs = np.array([o.corrected_pseudorange_m for o in signals], dtype=float)
-    if cfg.apply_iono:
-        iono = np.array([o.iono_delay_m if math.isfinite(o.iono_delay_m) else 0.0
-                         for o in signals], dtype=float)
-        L_obs = L_obs - iono
+    atmo = np.zeros(n)   # iono + tropo slant delay [m]; filled after a coarse fix
+    iono_alpha = signals[0].iono_alpha
+    iono_beta = signals[0].iono_beta
+    tow = float(t_sec) % 604800.0
     cn0 = np.array([o.cn0_dbhz for o in signals], dtype=float)
     cons_scale = np.array([cfg.weights.scale_for(o.constellation) for o in signals], dtype=float)
     isb_col = np.array([isb_index.get(o.constellation, -1) for o in signals], dtype=int)
     keys = [o.key for o in signals]
+
+    def _compute_atmo(rx):
+        """Iono (Klobuchar or pre-filled) + tropo (Saastamoinen) slant delay per sat.
+
+        Computed once from a coarse fix — the delays are insensitive to the
+        remaining position error, so this is not iterated. Loops over ~tens of
+        satellites, cheap next to the vectorised solve.
+        """
+        lat, lon, h = frames.ecef_to_lla(*rx)
+        R = frames.enu_rotation_matrix(lat, lon)
+        out = np.zeros(n)
+        for i, o in enumerate(signals):
+            enu = R @ (np.asarray(o.sv_pos, float) - rx)
+            el = math.degrees(math.atan2(enu[2], math.hypot(enu[0], enu[1])))
+            az = math.degrees(math.atan2(enu[0], enu[1]))
+            d = 0.0
+            if cfg.apply_tropo:
+                d += atmosphere.saastamoinen_tropo_delay_m(lat, h, el)
+            if cfg.apply_iono:
+                if math.isfinite(o.iono_delay_m) and o.iono_delay_m != 0.0:
+                    d += o.iono_delay_m
+                else:
+                    d += atmosphere.klobuchar_iono_delay_m(
+                        lat, lon, el, az, tow, iono_alpha, iono_beta, o.frequency_hz)
+            out[i] = d
+        return out
 
     def _build(state_vec):
         """Vectorised design matrix G, residual r, weight vector w, elevations."""
@@ -219,7 +250,7 @@ def solve_epoch(
 
         isb_per_obs = np.where(isb_col >= 0, state_vec[np.clip(isb_col, 0, None)], 0.0)
         predicted = rng + clk + isb_per_obs
-        r = L_obs - predicted
+        r = (L_obs - atmo) - predicted
 
         G = np.zeros((n, n_unknown))
         G[:, :3] = -unit
@@ -247,30 +278,43 @@ def solve_epoch(
         state = np.array([guess[0], guess[1], guess[2], 0.0] + [0.0] * len(isb_cons), dtype=float)
 
     # Gauss-Newton with backtracking line search.
-    iterations = 0
-    converged = False
-    for iterations in range(1, cfg.max_iterations + 1):
-        G, resid, w, _ = _build(state)
-        try:
-            N = G.T @ (G * w[:, None])
-            dstate = np.linalg.solve(N, G.T @ (w * resid))
-        except np.linalg.LinAlgError:
+    def _iterate(state_vec):
+        converged = False
+        iters = 0
+        for iters in range(1, cfg.max_iterations + 1):
+            G, resid, w, _ = _build(state_vec)
+            try:
+                N = G.T @ (G * w[:, None])
+                dstate = np.linalg.solve(N, G.T @ (w * resid))
+            except np.linalg.LinAlgError:
+                return state_vec, converged, iters, True  # singular
+            ssr0 = _wssr(resid, w)
+            alpha, accepted = 1.0, False
+            for _ in range(8):
+                cand = state_vec + alpha * dstate
+                _, rc, wc, _ = _build(cand)
+                if _wssr(rc, wc) <= ssr0:
+                    state_vec, accepted = cand, True
+                    break
+                alpha *= 0.5
+            if not accepted:
+                state_vec = state_vec + dstate
+            if np.linalg.norm(alpha * dstate[:3]) < cfg.convergence_m:
+                converged = True
+                break
+        return state_vec, converged, iters, False
+
+    state, converged, iterations, singular = _iterate(state)
+    if singular:
+        sol.reason = "singular_normal_matrix"
+        return sol
+    # Second pass: fill atmospheric delays from the coarse fix, then refine.
+    if (cfg.apply_tropo or cfg.apply_iono) and all(math.isfinite(v) for v in state[:3]):
+        atmo[:] = _compute_atmo(state[:3])
+        state, converged, iterations, singular = _iterate(state)
+        if singular:
             sol.reason = "singular_normal_matrix"
             return sol
-        ssr0 = _wssr(resid, w)
-        alpha, accepted = 1.0, False
-        for _ in range(8):
-            cand = state + alpha * dstate
-            _, rc, wc, _ = _build(cand)
-            if _wssr(rc, wc) <= ssr0:
-                state, accepted = cand, True
-                break
-            alpha *= 0.5
-        if not accepted:
-            state = state + dstate
-        if np.linalg.norm(alpha * dstate[:3]) < cfg.convergence_m:
-            converged = True
-            break
 
     G, resid, w, elev = _build(state)
     W = np.diag(w)

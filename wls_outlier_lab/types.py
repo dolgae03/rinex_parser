@@ -55,6 +55,10 @@ class SatObs:
     cn0_dbhz: float = float("nan")
     loi: bool = False
     iono_delay_m: float = 0.0
+    # Broadcast Klobuchar coefficients (per-epoch; identical across sats of an
+    # epoch). Used to model ionosphere when iono_delay_m is not pre-filled.
+    iono_alpha: Tuple[float, float, float, float] = (0.0, 0.0, 0.0, 0.0)
+    iono_beta: Tuple[float, float, float, float] = (0.0, 0.0, 0.0, 0.0)
 
     @property
     def key(self) -> Tuple[int, int, int]:

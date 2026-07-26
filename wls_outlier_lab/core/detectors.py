@@ -50,7 +50,12 @@ class DetectorConfig:
 
 
 def _robust_solve(obs, t_sec, wls_cfg: WlsConfig, reject: Optional[Set[SatId]] = None):
-    return solve_epoch(obs, t_sec, replace(wls_cfg, robust_huber=True), reject=reject)
+    # Detection uses de-median residuals where common atmosphere cancels, so the
+    # per-satellite atmospheric refinement is skipped here (keeps the many
+    # detector solves single-pass and fast). Atmosphere is applied in the final
+    # metric solves and in calibration.
+    cfg = replace(wls_cfg, robust_huber=True, apply_tropo=False, apply_iono=False)
+    return solve_epoch(obs, t_sec, cfg, reject=reject)
 
 
 def _usable(sol) -> bool:

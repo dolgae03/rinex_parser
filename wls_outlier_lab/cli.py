@@ -60,6 +60,9 @@ def build_arg_parser() -> argparse.ArgumentParser:
     p.add_argument("--no-elevation-weighting", action="store_true")
     p.add_argument("--no-cn0-weighting", action="store_true")
     p.add_argument("--no-sagnac", action="store_true")
+    p.add_argument("--no-tropo", action="store_true", help="disable Saastamoinen troposphere")
+    p.add_argument("--iono", action="store_true",
+                   help="enable broadcast Klobuchar ionosphere (crude single-freq; see README)")
 
     p.add_argument("--no-ablation", action="store_true")
     p.add_argument("--no-calibrate", action="store_true",
@@ -101,6 +104,8 @@ def main(argv=None) -> int:
             use_cn0=not args.no_cn0_weighting,
         ),
         apply_sagnac=not args.no_sagnac,
+        apply_tropo=not args.no_tropo,
+        apply_iono=args.iono,
     )
     dcfg = DetectorConfig(
         min_cn0_dbhz=args.min_cn0,
@@ -135,7 +140,9 @@ def main(argv=None) -> int:
         "wls": {"base_sigma_m": args.base_sigma,
                 "elevation_weighting": not args.no_elevation_weighting,
                 "cn0_weighting": not args.no_cn0_weighting,
-                "sagnac": not args.no_sagnac},
+                "sagnac": not args.no_sagnac,
+                "tropo": not args.no_tropo,
+                "iono_klobuchar": args.iono},
         "detector_config": {"min_cn0_dbhz": args.min_cn0,
                             "min_elevation_deg": args.min_elevation,
                             "residual_mad_k": args.residual_k,

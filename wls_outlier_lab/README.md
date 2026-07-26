@@ -147,10 +147,32 @@ Samsung phone raw log for that same drive is not in the repo yet; once it is par
 to a measurement TSV, run with `--truth-bestpos <...BESTPOS.ASCII>` and the analysis
 runs unchanged.
 
+## Atmospheric correction (`core/atmosphere.py`)
+
+Delays are applied in a second WLS pass: solve coarsely, compute the per-satellite
+iono + tropo slant delay at that fix, subtract, refine. Effect on the best
+detector (validation log):
+
+| config | horizontal RMSE | vertical RMSE |
+|---|---|---|
+| none | 2.10 m | 51.98 m |
+| **tropo only (default)** | **2.25 m** | **45.29 m** |
+| iono only (Klobuchar) | 4.73 m | 27.28 m |
+| tropo + iono | 4.43 m | 20.77 m |
+
+- **Troposphere (Saastamoinen)** is a clean win — vertical down, horizontal flat —
+  so it is **on by default**.
+- **Ionosphere (broadcast Klobuchar)** more than halves the vertical bias but
+  **degrades horizontal (2.1 → 4.7 m)**, so it is **off by default** (`--iono` to
+  enable). Two reasons: (1) single-frequency Klobuchar is a coarse model; (2) the
+  `iono_b` (beta / period) coefficients in this processed TSV are the wrong scale
+  (~1e-7 vs the expected ~1e5), so its diurnal term is degenerate — an upstream
+  parsing issue worth fixing.
+- **The right fix**, since this data carries both L1 and L5, is a **dual-frequency
+  iono-free combination** — removes ~all first-order ionosphere without Klobuchar's
+  penalty or its broken coefficients. Planned next.
+
 ## v1 limitations / next steps
-- **No atmospheric model** (iono/tropo): the clean solution keeps a ~50 m vertical
-  bias. Adding Klobuchar iono (coefficients are in the data) + Saastamoinen tropo
-  will tighten vertical and sharpen residual detection. Outlier detection already
-  works because the robust MAD scale adapts to the unmodelled spread.
+- **Ionosphere**: use dual-frequency iono-free (L1/L5 present) instead of Klobuchar.
 - **Attitude** is an interface only (`sources/attitude.py`).
 ```

@@ -11,8 +11,8 @@ from wls_outlier_lab.core.experiment import run_experiment
 from wls_outlier_lab.core.wls import WlsConfig, solve_epoch
 from wls_outlier_lab.tests.synthetic import make_epoch, make_track
 
-# perfect-data config: no sagnac / iono so the synthetic ranges are exact
-EXACT = WlsConfig(apply_sagnac=False, apply_iono=False)
+# perfect-data config: no sagnac / iono / tropo so the synthetic ranges are exact
+EXACT = WlsConfig(apply_sagnac=False, apply_iono=False, apply_tropo=False)
 
 
 def test_recovers_position_single_constellation():

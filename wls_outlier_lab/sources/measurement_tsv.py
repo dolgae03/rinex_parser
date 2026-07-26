@@ -47,6 +47,10 @@ def _row_to_obs(row: Dict[str, str]) -> Optional[SatObs]:
     if "sv_vel_x" in row:
         sv_vel = (_f(row.get("sv_vel_x")), _f(row.get("sv_vel_y")), _f(row.get("sv_vel_z")))
     loi_raw = _f(row.get("loi"))
+    alpha = tuple(_f(row.get(f"iono_a{i}")) or 0.0 for i in range(4))
+    beta = tuple(_f(row.get(f"iono_b{i}")) or 0.0 for i in range(4))
+    alpha = tuple(0.0 if v != v else v for v in alpha)
+    beta = tuple(0.0 if v != v else v for v in beta)
     return SatObs(
         constellation=constellation,
         prn=prn,
@@ -60,6 +64,8 @@ def _row_to_obs(row: Dict[str, str]) -> Optional[SatObs]:
         doppler_hz=_f(row.get("doppler_hz")),
         cn0_dbhz=_f(row.get("snr_dbhz")),
         loi=bool(int(loi_raw)) if math.isfinite(loi_raw) else False,
+        iono_alpha=alpha,
+        iono_beta=beta,
     )
 
 

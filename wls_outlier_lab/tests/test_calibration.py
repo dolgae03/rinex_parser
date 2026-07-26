@@ -7,7 +7,7 @@ from wls_outlier_lab.core.wls import WlsConfig
 from wls_outlier_lab.types import TruthSample, TruthTrack
 from wls_outlier_lab.tests.synthetic import make_epoch
 
-EXACT = WlsConfig(apply_sagnac=False, apply_iono=False)
+EXACT = WlsConfig(apply_sagnac=False, apply_iono=False, apply_tropo=False)
 
 
 def _dataset(n_epochs=30, noise_m=4.0, blunders=None):
