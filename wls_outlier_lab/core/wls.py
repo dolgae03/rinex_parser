@@ -25,7 +25,7 @@ what the detectors are for). The per-iteration design build is vectorised.
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Dict, Iterable, List, Optional, Sequence, Set, Tuple
 
 import numpy as np
@@ -50,9 +50,30 @@ class WeightConfig:
     use_cn0: bool = True
     cn0_ref_dbhz: float = 40.0
     min_elevation_deg: float = 5.0  # floor to keep 1/sin(el) finite for low sats
+    # Per-constellation base-sigma multipliers (relative to base_sigma_m). This is
+    # the "per-constellation sigma": a GLONASS/SBAS/IRNSS metre is trusted less
+    # than a GPS/Galileo/BeiDou metre. Tune per receiver; default reflects typical
+    # relative code-noise. Set use_constellation=False to disable.
+    use_constellation: bool = True
+    sigma_scale_by_constellation: Dict[int, float] = field(default_factory=lambda: {
+        0: 1.0,   # GPS
+        1: 1.0,   # GALILEO
+        2: 1.0,   # BEIDOU
+        3: 1.6,   # GLONASS (FDMA)
+        4: 1.1,   # QZSS
+        5: 2.5,   # SBAS (geostationary)
+        6: 2.0,   # IRNSS
+    })
+    default_constellation_scale: float = 1.5
 
-    def sigma_m(self, elevation_deg: float, cn0_dbhz: float) -> float:
-        var = self.base_sigma_m ** 2
+    def scale_for(self, constellation: int) -> float:
+        if not self.use_constellation:
+            return 1.0
+        return self.sigma_scale_by_constellation.get(int(constellation),
+                                                     self.default_constellation_scale)
+
+    def sigma_m(self, elevation_deg: float, cn0_dbhz: float, constellation: int = 0) -> float:
+        var = (self.base_sigma_m * self.scale_for(constellation)) ** 2
         if self.use_elevation:
             s = math.sin(math.radians(max(elevation_deg, self.min_elevation_deg)))
             var *= 1.0 / (s * s)
@@ -60,8 +81,12 @@ class WeightConfig:
             var *= 10.0 ** (-(cn0_dbhz - self.cn0_ref_dbhz) / 10.0)
         return math.sqrt(var)
 
-    def variance_array(self, elevation_deg: np.ndarray, cn0_dbhz: np.ndarray) -> np.ndarray:
-        var = np.full(elevation_deg.shape, self.base_sigma_m ** 2, dtype=float)
+    def variance_array(self, elevation_deg: np.ndarray, cn0_dbhz: np.ndarray,
+                       cons_scale: Optional[np.ndarray] = None) -> np.ndarray:
+        base = self.base_sigma_m ** 2
+        var = np.full(elevation_deg.shape, base, dtype=float)
+        if cons_scale is not None:
+            var = var * (cons_scale * cons_scale)
         if self.use_elevation:
             el = np.radians(np.maximum(elevation_deg, self.min_elevation_deg))
             s = np.sin(el)
@@ -163,6 +188,7 @@ def solve_epoch(
                          for o in signals], dtype=float)
         L_obs = L_obs - iono
     cn0 = np.array([o.cn0_dbhz for o in signals], dtype=float)
+    cons_scale = np.array([cfg.weights.scale_for(o.constellation) for o in signals], dtype=float)
     isb_col = np.array([isb_index.get(o.constellation, -1) for o in signals], dtype=int)
     keys = [o.key for o in signals]
 
@@ -198,7 +224,7 @@ def solve_epoch(
         has_isb = isb_col >= 0
         G[np.arange(n)[has_isb], isb_col[has_isb]] = 1.0
 
-        w = 1.0 / cfg.weights.variance_array(elev, cn0)
+        w = 1.0 / cfg.weights.variance_array(elev, cn0, cons_scale)
         if cfg.robust_huber and len(r) > 4:
             # IRLS: down-weight observations far from the robust residual centre
             s = max(1.4826 * float(np.median(np.abs(r - np.median(r)))), cfg.huber_floor_m)
