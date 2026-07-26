@@ -113,6 +113,45 @@ function plot_wls_results(output_dir)
                        'Resolution', 130);
     end
 
+    % ---- Figure 4: 측정 잡음 캘리브레이션 (선택) --------------------------
+    cc_file = fullfile(output_dir, 'calibration_by_constellation.csv');
+    if isfile(cc_file)
+        cc = readtable(cc_file, 'VariableNamingRule', 'preserve');
+        f4 = figure('Color', 'w', 'Name', 'Measurement noise calibration', ...
+                    'Position', [80 80 1180 420]);
+
+        subplot(1,3,1);
+        bar(cc.clean_std_m); grid on; set(gca, 'YScale', 'log');
+        set(gca, 'XTick', 1:height(cc), 'XTickLabel', string(cc.constellation), ...
+            'XTickLabelRotation', 25, 'TickLabelInterpreter', 'none');
+        ylabel('clean \sigma [m] (log)'); title('Per-constellation noise (vs truth)');
+        for i = 1:height(cc)
+            text(i, cc.clean_std_m(i), sprintf('%.0f', cc.clean_std_m(i)), ...
+                 'HorizontalAlignment', 'center', 'VerticalAlignment', 'bottom', 'FontSize', 8);
+        end
+
+        elf = fullfile(output_dir, 'calibration_by_elevation.csv');
+        if isfile(elf)
+            eb = readtable(elf, 'VariableNamingRule', 'preserve');
+            xc = (eb.bin_lo + eb.bin_hi) / 2;
+            subplot(1,3,2);
+            plot(xc, eb.clean_std_m, '-o', 'Color', BLUE, 'LineWidth', 1.4, 'MarkerFaceColor', BLUE);
+            grid on; xlabel('elevation [deg]'); ylabel('clean \sigma [m]');
+            title('Noise vs elevation');
+        end
+        cnf = fullfile(output_dir, 'calibration_by_cn0.csv');
+        if isfile(cnf)
+            cb = readtable(cnf, 'VariableNamingRule', 'preserve');
+            xc = (cb.bin_lo + cb.bin_hi) / 2;
+            subplot(1,3,3);
+            plot(xc, cb.clean_std_m, '-o', 'Color', RED, 'LineWidth', 1.4, 'MarkerFaceColor', RED);
+            grid on; xlabel('C/N0 [dB-Hz]'); ylabel('clean \sigma [m]');
+            title('Noise vs C/N0');
+        end
+        sgtitle('Empirical measurement noise (detrended residual vs truth)');
+        exportgraphics(f4, fullfile(output_dir, 'matlab_calibration.png'), 'Resolution', 130);
+    end
+
     fprintf('best detector: %s | H-RMSE %.2f m, CEP95 %.2f m, V-RMSE %.1f m\n', ...
             best, hrmse, cep95, vrmse);
     fprintf('saved matlab_*.png to %s\n', output_dir);

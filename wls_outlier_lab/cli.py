@@ -21,6 +21,7 @@ import sys
 import time
 from pathlib import Path
 
+from .core.calibration import calibrate, measurement_residuals
 from .core.detectors import DetectorConfig
 from .core.experiment import constellation_ablation, run_experiment
 from .core.wls import WeightConfig, WlsConfig
@@ -61,6 +62,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
     p.add_argument("--no-sagnac", action="store_true")
 
     p.add_argument("--no-ablation", action="store_true")
+    p.add_argument("--no-calibrate", action="store_true",
+                   help="skip the truth-referenced measurement-noise calibration")
     # Plotting is done in MATLAB (plot_wls_results.m) from the CSV outputs.
     # This flag additionally emits the optional matplotlib PNGs.
     p.add_argument("--matplotlib-plots", action="store_true",
@@ -117,6 +120,13 @@ def main(argv=None) -> int:
         ablation = constellation_ablation(epochs, truth, wls_cfg=wls_cfg,
                                           match_tolerance_sec=args.match_tolerance)
 
+    calibration = None
+    if not args.no_calibrate:
+        print("[run] measurement-noise calibration (vs truth) ...")
+        residuals = measurement_residuals(epochs, truth, wls_cfg=wls_cfg,
+                                          match_tolerance_sec=args.match_tolerance)
+        calibration = calibrate(residuals)
+
     meta = {
         "measurements": str(args.measurements),
         "truth": truth_desc,
@@ -134,7 +144,7 @@ def main(argv=None) -> int:
     }
     meta["runtime_sec"] = round(time.time() - t0, 2)
     paths = write_report(args.output_dir, result, ablation_rows=ablation, meta=meta,
-                         make_plots=args.matplotlib_plots)
+                         make_plots=args.matplotlib_plots, calibration=calibration)
 
     print("\n=== Detector comparison (best first) ===")
     print(f"{'detector':<24}{'hRMSE[m]':>10}{'h95[m]':>9}{'vRMSE[m]':>10}"
@@ -143,6 +153,16 @@ def main(argv=None) -> int:
         print(f"{r['detector']:<24}{_n(r['horizontal_rmse_m']):>10}{_n(r['horizontal_p95_m']):>9}"
               f"{_n(r['vertical_rmse_m']):>10}{_n(r['availability_pct'],1):>8}"
               f"{_n(r['mean_sats_used'],1):>6}{r['signal_rejections']:>7}{_n(r['improvement_pct'],1):>8}")
+    if calibration is not None:
+        print("\n=== Measurement noise vs truth (empirical, ref=GPS) ===")
+        print(f"{'constellation':<14}{'n':>7}{'clean_std[m]':>13}{'outlier%':>10}{'sigma_scale':>12}")
+        for name, s in calibration.by_constellation.items():
+            if s.get("n", 0) == 0:
+                continue
+            print(f"{name:<14}{s['n']:>7}{_n(s.get('clean_std_m'),1):>13}"
+                  f"{_n(100*s.get('outlier_rate',0),1):>10}"
+                  f"{_n(calibration.sigma_scale_by_constellation.get(name),2):>12}")
+
     print(f"\n[done] outputs in {args.output_dir}  ({meta['runtime_sec']}s)")
     for k, v in paths.items():
         print(f"  {k}: {v}")

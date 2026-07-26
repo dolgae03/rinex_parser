@@ -20,12 +20,24 @@ def _metrics_dict(m: ErrorMetrics) -> Dict[str, object]:
     return m.to_summary()
 
 
+def _r(x, nd: int = 2):
+    if x is None:
+        return ""
+    try:
+        if x != x:  # NaN
+            return ""
+        return round(float(x), nd)
+    except (TypeError, ValueError):
+        return x
+
+
 def write_report(
     output_dir: str | Path,
     result: ExperimentResult,
     ablation_rows: Optional[List[Dict[str, object]]] = None,
     meta: Optional[Dict[str, object]] = None,
     make_plots: bool = True,
+    calibration: Optional[object] = None,
 ) -> Dict[str, str]:
     out = Path(output_dir)
     out.mkdir(parents=True, exist_ok=True)
@@ -39,6 +51,7 @@ def write_report(
         "meta": meta or {},
         "baseline_detector": result.baseline_name,
         "best_detector": best,
+        "measurement_calibration": calibration.to_dict() if calibration is not None else None,
         "detector_comparison": comparison,
         "detectors": {
             name: {
@@ -80,6 +93,30 @@ def write_report(
             w.writeheader()
             w.writerows(ablation_rows)
         paths["constellation_ablation"] = str(abl_path)
+
+    # --- measurement calibration (empirical noise vs truth) --------------
+    if calibration is not None:
+        cal = calibration
+        cons_path = out / "calibration_by_constellation.csv"
+        with cons_path.open("w", newline="", encoding="utf-8") as fh:
+            w = csv.writer(fh)
+            w.writerow(["constellation", "n", "median_m", "mad_sigma_m", "clean_std_m",
+                        "rms_m", "outlier_rate", "sigma_scale_vs_ref"])
+            for name, s in cal.by_constellation.items():
+                w.writerow([name, s.get("n", 0), _r(s.get("median_m")), _r(s.get("mad_sigma_m")),
+                            _r(s.get("clean_std_m")), _r(s.get("rms_m")), _r(s.get("outlier_rate"), 4),
+                            cal.sigma_scale_by_constellation.get(name)])
+        paths["calibration_by_constellation"] = str(cons_path)
+        for tag, rows in (("cn0", cal.by_cn0_bin), ("elevation", cal.by_elevation_bin)):
+            bp = out / f"calibration_by_{tag}.csv"
+            with bp.open("w", newline="", encoding="utf-8") as fh:
+                w = csv.writer(fh)
+                w.writerow(["bin_lo", "bin_hi", "n", "clean_std_m", "mad_sigma_m", "rms_m", "outlier_rate"])
+                for r in rows:
+                    w.writerow([r.get("bin_lo"), r.get("bin_hi"), r.get("n", 0),
+                                _r(r.get("clean_std_m")), _r(r.get("mad_sigma_m")),
+                                _r(r.get("rms_m")), _r(r.get("outlier_rate"), 4)])
+            paths[f"calibration_by_{tag}"] = str(bp)
 
     # --- per-epoch errors for baseline and best --------------------------
     for tag in {result.baseline_name, best}:

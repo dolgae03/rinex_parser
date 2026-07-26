@@ -116,6 +116,29 @@ for an internal robust scale); a **global** robust scale is required.
 `constellation_ablation` independently confirms it: dropping QZSS recovers 2.18 m,
 while GPS-only / GALILEO-only / BeiDou-only are each 2.5–5.3 m.
 
+## Measurement calibration — data-driven sigma (not guessed)
+
+With truth we measure the noise instead of assuming it (`core/calibration.py`):
+each observation's prefit residual at truth, detrended by the per-epoch,
+per-constellation median, is the per-signal error. Aggregated it yields the
+empirical per-constellation sigma, and how sigma varies with C/N0 and elevation.
+On the validation log:
+
+| grouping | empirical clean sigma |
+|---|---|
+| GPS / GALILEO / BEIDOU | 21 / 18 / 16 m (≈ equal) |
+| QZSS | ~1.4 × 10⁶ m (the broken-ephemeris satellite) |
+| elevation 0–15° → 30–90° | 21 m → ~5 m |
+| C/N0 <25 → >45 dB-Hz | 53 m → 10 m |
+
+Takeaways: the real quality drivers are **elevation and C/N0** (the weight model
+is validated), GPS/Galileo/BeiDou are ~equal here, and no GLONASS/SBAS/IRNSS are
+even present — so the per-constellation sigma multipliers now **default to a
+neutral 1.0** rather than baked-in guesses. Derive real ones per receiver and
+apply them: `WeightConfig().with_constellation_scales(cal.sigma_scale_by_constellation)`.
+The CLI writes `calibration_by_{constellation,cn0,elevation}.csv` by default
+(`--no-calibrate` to skip); `plot_wls_results.m` draws them.
+
 ## Applying it to the `samsung_3rd` Novatel session
 
 `samsung_3rd/21-sample_novatel_log/` supplies the **truth** (RTK BESTPOS,

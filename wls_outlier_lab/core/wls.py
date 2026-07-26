@@ -50,21 +50,24 @@ class WeightConfig:
     use_cn0: bool = True
     cn0_ref_dbhz: float = 40.0
     min_elevation_deg: float = 5.0  # floor to keep 1/sin(el) finite for low sats
-    # Per-constellation base-sigma multipliers (relative to base_sigma_m). This is
-    # the "per-constellation sigma": a GLONASS/SBAS/IRNSS metre is trusted less
-    # than a GPS/Galileo/BeiDou metre. Tune per receiver; default reflects typical
-    # relative code-noise. Set use_constellation=False to disable.
+    # Per-constellation base-sigma multipliers (relative to base_sigma_m). Default
+    # is NEUTRAL (1.0 for every constellation): we do not bake in unmeasured
+    # guesses. Derive real values per receiver from truth with
+    # ``core.calibration`` and set them here (see WeightConfig.with_constellation_scales).
     use_constellation: bool = True
-    sigma_scale_by_constellation: Dict[int, float] = field(default_factory=lambda: {
-        0: 1.0,   # GPS
-        1: 1.0,   # GALILEO
-        2: 1.0,   # BEIDOU
-        3: 1.6,   # GLONASS (FDMA)
-        4: 1.1,   # QZSS
-        5: 2.5,   # SBAS (geostationary)
-        6: 2.0,   # IRNSS
-    })
-    default_constellation_scale: float = 1.5
+    sigma_scale_by_constellation: Dict[int, float] = field(default_factory=dict)
+    default_constellation_scale: float = 1.0
+
+    def with_constellation_scales(self, scales_by_name_or_id: Dict) -> "WeightConfig":
+        """Return a copy with per-constellation sigma scales (accepts names or ids)."""
+        from ..types import CONSTELLATION_NAMES
+        name_to_id = {v: k for k, v in CONSTELLATION_NAMES.items()}
+        resolved = {}
+        for key, val in scales_by_name_or_id.items():
+            cid = name_to_id.get(key, key)
+            resolved[int(cid)] = float(val)
+        import dataclasses
+        return dataclasses.replace(self, sigma_scale_by_constellation=resolved)
 
     def scale_for(self, constellation: int) -> float:
         if not self.use_constellation:
