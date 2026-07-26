@@ -157,6 +157,33 @@ def write_report(
     return paths
 
 
+def write_iono_comparison(output_dir: str | Path, metrics_by_mode: Dict[str, object]) -> Dict[str, str]:
+    """Write the ionosphere-treatment comparison table + per-mode per-epoch errors."""
+    out = Path(output_dir)
+    out.mkdir(parents=True, exist_ok=True)
+    paths: Dict[str, str] = {}
+    comp_path = out / "iono_comparison.csv"
+    with comp_path.open("w", newline="", encoding="utf-8") as fh:
+        w = csv.writer(fh)
+        w.writerow(["mode", "horizontal_rmse_m", "horizontal_cep95_m", "horizontal_p95_m",
+                    "vertical_rmse_m", "vertical_mean_m", "availability_pct", "mean_sats_used"])
+        for mode, m in metrics_by_mode.items():
+            w.writerow([mode, _r(m.horizontal_rmse_m, 3), _r(m.cep95_m, 3), _r(m.horizontal_p95_m, 3),
+                        _r(m.vertical_rmse_m, 3), _r(m.vertical_mean_m, 3),
+                        _r(m.availability_pct, 2), _r(m.mean_sats_used, 2)])
+    paths["iono_comparison"] = str(comp_path)
+    for mode, m in metrics_by_mode.items():
+        pe = out / f"per_epoch_iono_{mode}.csv"
+        with pe.open("w", newline="", encoding="utf-8") as fh:
+            w = csv.writer(fh)
+            w.writerow(["t_sec", "east_m", "north_m", "up_m", "horizontal_m"])
+            for e in m.per_epoch:
+                w.writerow([f"{e.t_sec:.3f}", f"{e.east_m:.4f}", f"{e.north_m:.4f}",
+                            f"{e.up_m:.4f}", f"{e.horizontal_m:.4f}"])
+        paths[f"per_epoch_iono_{mode}"] = str(pe)
+    return paths
+
+
 def _write_plots(out: Path, result: ExperimentResult, best: str, paths: Dict[str, str]) -> None:
     import matplotlib
     matplotlib.use("Agg")

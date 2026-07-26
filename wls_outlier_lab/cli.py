@@ -19,13 +19,15 @@ from __future__ import annotations
 import argparse
 import sys
 import time
+from dataclasses import replace
 from pathlib import Path
 
 from .core.calibration import calibrate, measurement_residuals, outlier_catalog
 from .core.detectors import DetectorConfig
-from .core.experiment import constellation_ablation, run_experiment
+from .core.experiment import compare_ionosphere, constellation_ablation, run_experiment
+from .core.iono_free import form_iono_free
 from .core.wls import WeightConfig, WlsConfig
-from .reporting import write_report
+from .reporting import write_iono_comparison, write_report
 from .sources.measurement_tsv import load_epochs
 from .sources.truth_bestpos import BestposTruthSource
 from .sources.truth_columns import ColumnTruthSource
@@ -63,6 +65,10 @@ def build_arg_parser() -> argparse.ArgumentParser:
     p.add_argument("--no-tropo", action="store_true", help="disable Saastamoinen troposphere")
     p.add_argument("--iono", action="store_true",
                    help="enable broadcast Klobuchar ionosphere (crude single-freq; see README)")
+    p.add_argument("--iono-free", action="store_true",
+                   help="run on the dual-frequency (L1/L5) ionosphere-free combination")
+    p.add_argument("--compare-iono", action="store_true",
+                   help="compare the nav solution under none/tropo/klobuchar/iono-free")
 
     p.add_argument("--no-ablation", action="store_true")
     p.add_argument("--no-calibrate", action="store_true",
@@ -115,6 +121,18 @@ def main(argv=None) -> int:
     )
     detectors = [s.strip() for s in args.detectors.split(",")] if args.detectors else None
 
+    iono_cmp = None
+    if args.compare_iono:
+        print("[run] ionosphere comparison (none / tropo / klobuchar / iono_free) ...")
+        iono_cmp = compare_ionosphere(epochs, truth, wls_cfg=wls_cfg, dcfg=dcfg,
+                                      match_tolerance_sec=args.match_tolerance)
+
+    if args.iono_free:
+        epochs = form_iono_free(epochs)
+        wls_cfg = replace(wls_cfg, apply_iono=False)
+        n_obs = sum(len(e.obs) for e in epochs)
+        print(f"[iono] iono-free (L1/L5): {n_obs} IF obs across {len(epochs)} epochs")
+
     print("[run] detector comparison ...")
     result = run_experiment(epochs, truth, wls_cfg=wls_cfg, dcfg=dcfg,
                             detectors=detectors, match_tolerance_sec=args.match_tolerance)
@@ -144,7 +162,8 @@ def main(argv=None) -> int:
                 "cn0_weighting": not args.no_cn0_weighting,
                 "sagnac": not args.no_sagnac,
                 "tropo": not args.no_tropo,
-                "iono_klobuchar": args.iono},
+                "iono_klobuchar": args.iono,
+                "iono_free": args.iono_free},
         "detector_config": {"min_cn0_dbhz": args.min_cn0,
                             "min_elevation_deg": args.min_elevation,
                             "residual_mad_k": args.residual_k,
@@ -155,6 +174,8 @@ def main(argv=None) -> int:
     paths = write_report(args.output_dir, result, ablation_rows=ablation, meta=meta,
                          make_plots=args.matplotlib_plots, calibration=calibration,
                          catalog=catalog)
+    if iono_cmp is not None:
+        paths.update(write_iono_comparison(args.output_dir, iono_cmp))
 
     print("\n=== Detector comparison (best first) ===")
     print(f"{'detector':<24}{'hRMSE[m]':>10}{'h95[m]':>9}{'vRMSE[m]':>10}"
@@ -163,6 +184,13 @@ def main(argv=None) -> int:
         print(f"{r['detector']:<24}{_n(r['horizontal_rmse_m']):>10}{_n(r['horizontal_p95_m']):>9}"
               f"{_n(r['vertical_rmse_m']):>10}{_n(r['availability_pct'],1):>8}"
               f"{_n(r['mean_sats_used'],1):>6}{r['signal_rejections']:>7}{_n(r['improvement_pct'],1):>8}")
+    if iono_cmp is not None:
+        print("\n=== Horizontal nav solution by ionosphere treatment (detector=combined) ===")
+        print(f"{'mode':<12}{'hRMSE[m]':>10}{'hCEP95[m]':>11}{'vRMSE[m]':>10}{'vMean[m]':>10}{'avail%':>8}{'sats':>6}")
+        for mode, m in iono_cmp.items():
+            print(f"{mode:<12}{_n(m.horizontal_rmse_m):>10}{_n(m.cep95_m):>11}{_n(m.vertical_rmse_m):>10}"
+                  f"{_n(m.vertical_mean_m):>10}{_n(m.availability_pct,1):>8}{_n(m.mean_sats_used,1):>6}")
+
     if calibration is not None:
         print("\n=== Measurement noise vs truth (empirical, ref=GPS) ===")
         print(f"{'constellation':<14}{'n':>7}{'clean_std[m]':>13}{'outlier%':>10}{'sigma_scale':>12}")

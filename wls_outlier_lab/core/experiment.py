@@ -7,11 +7,12 @@ Still pure logic — epochs and a truth track go in, comparison tables come out.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Dict, List, Optional, Sequence, Set, Tuple
 
 from ..types import Epoch, TruthTrack, constellation_name
 from .detectors import DETECTORS, DetectorConfig
+from .iono_free import form_iono_free
 from .metrics import ErrorMetrics, compute_metrics
 from .wls import WlsConfig, solve_epoch
 
@@ -99,6 +100,42 @@ def run_experiment(
             epochs_with_rejection=epochs_hit, rejections_by_constellation=rej_by_cons,
         )
     return ExperimentResult(baseline_name=baseline_name, runs=runs)
+
+
+def compare_ionosphere(
+    epochs: Sequence[Epoch],
+    truth: TruthTrack,
+    wls_cfg: Optional[WlsConfig] = None,
+    dcfg: Optional[DetectorConfig] = None,
+    detector: str = "combined",
+    match_tolerance_sec: float = 0.5,
+) -> Dict[str, ErrorMetrics]:
+    """Solve the horizontal/vertical nav solution under each ionosphere treatment.
+
+    Modes: no atmosphere, troposphere only, tropo + broadcast Klobuchar, and
+    tropo + dual-frequency ionosphere-free. Same outlier detector throughout, so
+    the only difference is how the ionosphere is handled.
+    """
+    wls_cfg = wls_cfg or WlsConfig()
+    dcfg = dcfg or DetectorConfig()
+    det = DETECTORS[detector]
+
+    configs = [
+        ("none", epochs, replace(wls_cfg, apply_tropo=False, apply_iono=False)),
+        ("tropo", epochs, replace(wls_cfg, apply_tropo=True, apply_iono=False)),
+        ("klobuchar", epochs, replace(wls_cfg, apply_tropo=True, apply_iono=True)),
+        ("iono_free", form_iono_free(epochs), replace(wls_cfg, apply_tropo=True, apply_iono=False)),
+    ]
+    out: Dict[str, ErrorMetrics] = {}
+    for name, eps, cfg in configs:
+        sols = []
+        for ep in eps:
+            reject = det(ep.obs, ep.t_sec, cfg, dcfg)
+            sols.append(solve_epoch(ep.obs, ep.t_sec, cfg, reject=reject))
+        out[name] = compute_metrics(sols, truth, label=name,
+                                    match_tolerance_sec=match_tolerance_sec,
+                                    n_epochs_total=len(eps))
+    return out
 
 
 def constellation_ablation(

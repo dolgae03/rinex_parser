@@ -180,11 +180,26 @@ detector (validation log):
   `iono_b` (beta / period) coefficients in this processed TSV are the wrong scale
   (~1e-7 vs the expected ~1e5), so its diurnal term is degenerate — an upstream
   parsing issue worth fixing.
-- **The right fix**, since this data carries both L1 and L5, is a **dual-frequency
-  iono-free combination** — removes ~all first-order ionosphere without Klobuchar's
-  penalty or its broken coefficients. Planned next.
+- **Dual-frequency ionosphere-free** (`core/iono_free.py`, `--iono-free`) forms the
+  L1/L5 combination that removes ~all first-order ionosphere without any model.
+  `--compare-iono` runs all four treatments with the same detector:
+
+  | mode | horizontal RMSE | vertical RMSE | mean sats |
+  |---|---|---|---|
+  | none | 2.15 m | 51.9 m | 35.7 |
+  | tropo (default) | 2.29 m | 45.2 m | 35.7 |
+  | klobuchar | 4.46 m | 20.7 m | 35.7 |
+  | iono_free | 9.81 m | 38.4 m | **15.9** |
+
+  Finding: on this phone iono-free is **worse**, not better — L5 is sparse so it
+  keeps only dual-band satellites (**satellites halved → weaker geometry**) and the
+  combination amplifies noise ~2.6×. Ionosphere removal is real but outweighed here.
+  So **troposphere-only is the default**; iono handling stays opt-in and, for this
+  receiver/environment, best left off horizontally. `plot_wls_results.m` draws the
+  comparison (`matlab_iono_comparison.png`: EN scatter, horizontal CDF, RMSE bars).
 
 ## v1 limitations / next steps
-- **Ionosphere**: use dual-frequency iono-free (L1/L5 present) instead of Klobuchar.
+- **Ionosphere**: horizontal is best with tropo-only here; a denser-L5 dataset (or
+  SBAS/PPP corrections) would let iono-free pay off. Both are wired in.
 - **Attitude** is an interface only (`sources/attitude.py`).
 ```

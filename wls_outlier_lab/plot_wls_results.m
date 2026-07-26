@@ -178,6 +178,47 @@ function plot_wls_results(output_dir)
         fprintf('sky plot: %d/%d obs flagged as outliers\n', nnz(isout), height(cat));
     end
 
+    % ---- Figure 6: ionosphere-treatment comparison (선택) ----------------
+    ic_file = fullfile(output_dir, 'iono_comparison.csv');
+    if isfile(ic_file)
+        ic = readtable(ic_file, 'VariableNamingRule', 'preserve');
+        modes = string(ic.mode);
+        cols = lines(numel(modes));
+        f6 = figure('Color', 'w', 'Name', 'Ionosphere comparison', 'Position', [60 60 1360 470]);
+
+        subplot(1, 3, 1); hold on; grid on; axis equal;
+        for i = 1:numel(modes)
+            pe = fullfile(output_dir, "per_epoch_iono_" + modes(i) + ".csv");
+            if ~isfile(pe), continue; end
+            T = readtable(pe, 'VariableNamingRule', 'preserve');
+            scatter(T.east_m, T.north_m, 8, cols(i, :), 'filled', 'MarkerFaceAlpha', 0.35);
+        end
+        xline(0, 'k'); yline(0, 'k');
+        xlabel('East error [m]'); ylabel('North error [m]'); title('Horizontal error scatter');
+        legend(modes, 'Location', 'bestoutside', 'Interpreter', 'none');
+
+        subplot(1, 3, 2); hold on; grid on;
+        for i = 1:numel(modes)
+            pe = fullfile(output_dir, "per_epoch_iono_" + modes(i) + ".csv");
+            if ~isfile(pe), continue; end
+            T = readtable(pe, 'VariableNamingRule', 'preserve');
+            hh = sort(hypot(T.east_m, T.north_m));
+            plot(hh, linspace(0, 100, numel(hh)), 'Color', cols(i, :), 'LineWidth', 1.5);
+        end
+        xlabel('horizontal error [m]'); ylabel('percentile [%]'); title('Horizontal error CDF');
+        legend(modes, 'Location', 'southeast', 'Interpreter', 'none');
+
+        subplot(1, 3, 3);
+        bar([ic.horizontal_rmse_m, ic.vertical_rmse_m]); grid on;
+        set(gca, 'XTick', 1:numel(modes), 'XTickLabel', modes, 'XTickLabelRotation', 20, ...
+            'TickLabelInterpreter', 'none');
+        ylabel('RMSE [m]'); legend({'horizontal', 'vertical'}, 'Location', 'northwest');
+        title('RMSE by ionosphere treatment');
+
+        sgtitle('Horizontal nav solution vs ionosphere treatment');
+        exportgraphics(f6, fullfile(output_dir, 'matlab_iono_comparison.png'), 'Resolution', 130);
+    end
+
     fprintf('best detector: %s | H-RMSE %.2f m, CEP95 %.2f m, V-RMSE %.1f m\n', ...
             best, hrmse, cep95, vrmse);
     fprintf('saved matlab_*.png to %s\n', output_dir);
