@@ -61,7 +61,10 @@ def build_arg_parser() -> argparse.ArgumentParser:
     p.add_argument("--no-sagnac", action="store_true")
 
     p.add_argument("--no-ablation", action="store_true")
-    p.add_argument("--no-plots", action="store_true")
+    # Plotting is done in MATLAB (plot_wls_results.m) from the CSV outputs.
+    # This flag additionally emits the optional matplotlib PNGs.
+    p.add_argument("--matplotlib-plots", action="store_true",
+                   help="also write matplotlib PNGs (default: CSV only; plot in MATLAB)")
     return p
 
 
@@ -131,7 +134,7 @@ def main(argv=None) -> int:
     }
     meta["runtime_sec"] = round(time.time() - t0, 2)
     paths = write_report(args.output_dir, result, ablation_rows=ablation, meta=meta,
-                         make_plots=not args.no_plots)
+                         make_plots=args.matplotlib_plots)
 
     print("\n=== Detector comparison (best first) ===")
     print(f"{'detector':<24}{'hRMSE[m]':>10}{'h95[m]':>9}{'vRMSE[m]':>10}"
@@ -143,6 +146,8 @@ def main(argv=None) -> int:
     print(f"\n[done] outputs in {args.output_dir}  ({meta['runtime_sec']}s)")
     for k, v in paths.items():
         print(f"  {k}: {v}")
+    print("\n[plot] in MATLAB:")
+    print(f"  addpath('wls_outlier_lab'); plot_wls_results('{args.output_dir}')")
     return 0
 
 

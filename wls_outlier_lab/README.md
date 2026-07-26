@@ -77,9 +77,26 @@ python -m wls_outlier_lab.cli `
 
 Optional API: `uvicorn wls_outlier_lab.app:app --port 8020` → `POST /analyze`.
 
-Outputs: `summary.json`, `detector_comparison.csv`, `constellation_ablation.csv`,
-`per_epoch_<detector>.csv`, and (if matplotlib present) `detector_comparison.png`,
-`error_baseline_vs_best.png`.
+### Outputs & plotting
+
+The Python pipeline writes **data** only by default: `summary.json`,
+`detector_comparison.csv`, `constellation_ablation.csv`, `per_epoch_<detector>.csv`.
+
+**Plots are drawn in MATLAB** (cleaner, and matches the rest of this repo) by
+`plot_wls_results.m`, which reads those CSVs:
+
+```matlab
+addpath('wls_outlier_lab');
+plot_wls_results('results/2026_04_06')   % the --output-dir you used
+```
+
+It produces, into the same folder:
+- `matlab_error_horizontal_vertical.png` — horizontal scatter, horizontal-vs-time,
+  vertical-vs-time, and a horizontal/vertical error CDF for the best detector;
+- `matlab_detector_comparison.png` — horizontal RMSE per detector (log scale);
+- `matlab_constellation_ablation.png` — per-constellation drop/only RMSE.
+
+(`--matplotlib-plots` still emits equivalent matplotlib PNGs if you have no MATLAB.)
 
 ## Validation result (2026-04-06 driving log, RTK truth, 216 epochs)
 
