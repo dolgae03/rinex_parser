@@ -152,6 +152,32 @@ function plot_wls_results(output_dir)
         exportgraphics(f4, fullfile(output_dir, 'matlab_calibration.png'), 'Resolution', 130);
     end
 
+    % ---- Figure 5: sky plot + blunder catalog (선택) ---------------------
+    cat_file = fullfile(output_dir, 'blunder_catalog.csv');
+    if isfile(cat_file)
+        cat = readtable(cat_file, 'VariableNamingRule', 'preserve');
+        th = deg2rad(cat.azimuth_deg);
+        rho = 90 - cat.elevation_deg;                 % 0=zenith(center), 90=horizon(edge)
+        ar = abs(cat.residual_m);
+        cap = prctile(ar, 95);
+        isout = cat.is_outlier == 1;
+
+        f5 = figure('Color', 'w', 'Name', 'Sky plot', 'Position', [80 80 820 720]);
+        pax = polaraxes; hold(pax, 'on');
+        pax.ThetaZeroLocation = 'top'; pax.ThetaDir = 'clockwise';
+        polarscatter(pax, th, rho, 20, min(ar, cap), 'filled', 'MarkerFaceAlpha', 0.6);
+        colormap(pax, turbo); cb = colorbar(pax);
+        cb.Label.String = '|residual| [m] (capped at p95)';
+        polarscatter(pax, th(isout), rho(isout), 70, 'r', 'x', 'LineWidth', 1.5);
+        rlim(pax, [0 90]);
+        pax.RTick = [0 30 60 90]; pax.RTickLabel = {'90', '60', '30', '0'};  % elevation
+        title(pax, sprintf(['Sky plot  (N up, clockwise; ring = elevation)   ' ...
+            '%d / %d flagged as outliers'], nnz(isout), height(cat)));
+        exportgraphics(f5, fullfile(output_dir, 'matlab_skyplot.png'), 'Resolution', 130);
+
+        fprintf('sky plot: %d/%d obs flagged as outliers\n', nnz(isout), height(cat));
+    end
+
     fprintf('best detector: %s | H-RMSE %.2f m, CEP95 %.2f m, V-RMSE %.1f m\n', ...
             best, hrmse, cep95, vrmse);
     fprintf('saved matlab_*.png to %s\n', output_dir);

@@ -139,6 +139,18 @@ apply them: `WeightConfig().with_constellation_scales(cal.sigma_scale_by_constel
 The CLI writes `calibration_by_{constellation,cn0,elevation}.csv` by default
 (`--no-calibrate` to skip); `plot_wls_results.m` draws them.
 
+### Blunder catalog & sky plot
+
+The same truth-referenced residuals are turned into a **blunder catalog**
+(`blunder_catalog.csv`: every observation with elevation, azimuth, C/N0,
+residual, z-score, and an `is_outlier` flag), plus per-constellation and worst-
+satellite tallies in `summary.json`. `plot_wls_results.m` draws a **sky plot**
+(`matlab_skyplot.png`) — azimuth/elevation polar, coloured by |residual|, with
+flagged outliers marked — so you can see *when and from which direction* bad
+measurements arrive. On the validation log 6.8% of obs are flagged; QZSS is 67%
+(satellites QZSS-3 and QZSS-4, the broken ephemerides), the rest are low-elevation
+BeiDou near the horizon.
+
 ## Applying it to the `samsung_3rd` Novatel session
 
 `samsung_3rd/21-sample_novatel_log/` supplies the **truth** (RTK BESTPOS,

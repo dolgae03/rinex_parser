@@ -34,6 +34,7 @@ class MeasResidual:
     freq_hz: float
     cn0_dbhz: float
     elevation_deg: float
+    azimuth_deg: float
     residual_m: float       # detrended (per-epoch, per-constellation median removed)
     raw_offset_m: float     # L = corrected_pr - range(truth), before detrend
 
@@ -64,18 +65,63 @@ def measurement_residuals(
             rng = float(np.linalg.norm(diff))
             enu = R @ diff
             el = math.degrees(math.atan2(enu[2], math.hypot(enu[0], enu[1])))
+            az = math.degrees(math.atan2(enu[0], enu[1])) % 360.0
             iono = o.iono_delay_m if (wls_cfg.apply_iono and math.isfinite(o.iono_delay_m)) else 0.0
             L = o.corrected_pseudorange_m - iono - rng
-            recs.append((o, el, L))
+            recs.append((o, el, az, L))
             by_cons[o.constellation].append(L)
         med = {c: float(np.median(v)) for c, v in by_cons.items()}
-        for o, el, L in recs:
+        for o, el, az, L in recs:
             out.append(MeasResidual(
                 t_sec=ep.t_sec, constellation=o.constellation, prn=o.prn,
                 freq_hz=o.frequency_hz, cn0_dbhz=o.cn0_dbhz, elevation_deg=el,
-                residual_m=L - med[o.constellation], raw_offset_m=L,
+                azimuth_deg=az, residual_m=L - med[o.constellation], raw_offset_m=L,
             ))
     return out
+
+
+def outlier_catalog(residuals: Sequence[MeasResidual], k: float = 5.0,
+                    mad_floor_m: float = 6.0) -> Dict:
+    """Flag truth-referenced blunders and return a catalog + summary.
+
+    ``residual_m`` is already de-medianed per (epoch, constellation), so a single
+    global robust scale (MAD over all residuals) gives each observation a z-score;
+    |z| > k marks a blunder. Returns per-record rows (for the sky plot) and
+    aggregate counts by constellation and by satellite.
+    """
+    if not residuals:
+        return {"rows": [], "n": 0, "n_outliers": 0, "scale_m": float("nan"),
+                "by_constellation": {}, "worst_satellites": []}
+    vals = np.array([r.residual_m for r in residuals], float)
+    med = float(np.median(vals))
+    scale = max(1.4826 * float(np.median(np.abs(vals - med))), mad_floor_m)
+    rows, by_c, by_sat = [], defaultdict(lambda: [0, 0]), defaultdict(lambda: [0, 0])
+    for r in residuals:
+        z = abs(r.residual_m - med) / scale
+        is_out = z > k
+        rows.append({
+            "t_sec": r.t_sec, "constellation": constellation_name(r.constellation),
+            "prn": r.prn, "freq_mhz": round(r.freq_hz / 1e6, 2),
+            "elevation_deg": round(r.elevation_deg, 2), "azimuth_deg": round(r.azimuth_deg, 2),
+            "cn0_dbhz": round(r.cn0_dbhz, 1) if r.cn0_dbhz == r.cn0_dbhz else "",
+            "residual_m": round(r.residual_m, 3), "z": round(z, 2),
+            "is_outlier": int(is_out),
+        })
+        cname = constellation_name(r.constellation)
+        by_c[cname][0] += 1
+        by_c[cname][1] += int(is_out)
+        key = f"{cname}-{r.prn}"
+        by_sat[key][0] += 1
+        by_sat[key][1] += int(is_out)
+    by_constellation = {c: {"n": n, "n_outliers": no, "rate": round(no / n, 4)}
+                        for c, (n, no) in sorted(by_c.items())}
+    worst = sorted(({"satellite": s, "n": n, "n_outliers": no, "rate": round(no / n, 4)}
+                    for s, (n, no) in by_sat.items() if no > 0),
+                   key=lambda d: (-d["n_outliers"], -d["rate"]))[:15]
+    n_out = sum(r["is_outlier"] for r in rows)
+    return {"rows": rows, "n": len(rows), "n_outliers": n_out,
+            "scale_m": round(scale, 3), "threshold_k": k,
+            "by_constellation": by_constellation, "worst_satellites": worst}
 
 
 def _robust_stats(values: np.ndarray, k: float = 5.0) -> Dict[str, float]:

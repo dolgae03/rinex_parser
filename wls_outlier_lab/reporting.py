@@ -38,6 +38,7 @@ def write_report(
     meta: Optional[Dict[str, object]] = None,
     make_plots: bool = True,
     calibration: Optional[object] = None,
+    catalog: Optional[Dict[str, object]] = None,
 ) -> Dict[str, str]:
     out = Path(output_dir)
     out.mkdir(parents=True, exist_ok=True)
@@ -52,6 +53,9 @@ def write_report(
         "baseline_detector": result.baseline_name,
         "best_detector": best,
         "measurement_calibration": calibration.to_dict() if calibration is not None else None,
+        "outlier_catalog_summary": (
+            {k: v for k, v in catalog.items() if k != "rows"} if catalog is not None else None
+        ),
         "detector_comparison": comparison,
         "detectors": {
             name: {
@@ -117,6 +121,16 @@ def write_report(
                                 _r(r.get("clean_std_m")), _r(r.get("mad_sigma_m")),
                                 _r(r.get("rms_m")), _r(r.get("outlier_rate"), 4)])
             paths[f"calibration_by_{tag}"] = str(bp)
+
+    # --- blunder catalog (truth-referenced, all obs + is_outlier flag) ---
+    if catalog is not None and catalog.get("rows"):
+        rows = catalog["rows"]
+        cat_path = out / "blunder_catalog.csv"
+        with cat_path.open("w", newline="", encoding="utf-8") as fh:
+            w = csv.DictWriter(fh, fieldnames=list(rows[0].keys()))
+            w.writeheader()
+            w.writerows(rows)
+        paths["blunder_catalog"] = str(cat_path)
 
     # --- per-epoch errors for baseline and best --------------------------
     for tag in {result.baseline_name, best}:

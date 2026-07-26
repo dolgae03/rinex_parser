@@ -21,7 +21,7 @@ import sys
 import time
 from pathlib import Path
 
-from .core.calibration import calibrate, measurement_residuals
+from .core.calibration import calibrate, measurement_residuals, outlier_catalog
 from .core.detectors import DetectorConfig
 from .core.experiment import constellation_ablation, run_experiment
 from .core.wls import WeightConfig, WlsConfig
@@ -126,11 +126,13 @@ def main(argv=None) -> int:
                                           match_tolerance_sec=args.match_tolerance)
 
     calibration = None
+    catalog = None
     if not args.no_calibrate:
-        print("[run] measurement-noise calibration (vs truth) ...")
+        print("[run] measurement-noise calibration + blunder catalog (vs truth) ...")
         residuals = measurement_residuals(epochs, truth, wls_cfg=wls_cfg,
                                           match_tolerance_sec=args.match_tolerance)
         calibration = calibrate(residuals)
+        catalog = outlier_catalog(residuals, k=args.residual_k, mad_floor_m=args.mad_floor)
 
     meta = {
         "measurements": str(args.measurements),
@@ -151,7 +153,8 @@ def main(argv=None) -> int:
     }
     meta["runtime_sec"] = round(time.time() - t0, 2)
     paths = write_report(args.output_dir, result, ablation_rows=ablation, meta=meta,
-                         make_plots=args.matplotlib_plots, calibration=calibration)
+                         make_plots=args.matplotlib_plots, calibration=calibration,
+                         catalog=catalog)
 
     print("\n=== Detector comparison (best first) ===")
     print(f"{'detector':<24}{'hRMSE[m]':>10}{'h95[m]':>9}{'vRMSE[m]':>10}"
@@ -169,6 +172,17 @@ def main(argv=None) -> int:
             print(f"{name:<14}{s['n']:>7}{_n(s.get('clean_std_m'),1):>13}"
                   f"{_n(100*s.get('outlier_rate',0),1):>10}"
                   f"{_n(calibration.sigma_scale_by_constellation.get(name),2):>12}")
+
+    if catalog is not None and catalog.get("n"):
+        print(f"\n=== Blunder catalog (truth-referenced, |z|>{catalog['threshold_k']}, "
+              f"scale={catalog['scale_m']} m) ===")
+        print(f"  {catalog['n_outliers']}/{catalog['n']} obs flagged "
+              f"({100*catalog['n_outliers']/catalog['n']:.1f}%)")
+        for c, s in catalog["by_constellation"].items():
+            print(f"    {c:<9} {s['n_outliers']:>5}/{s['n']:<6} ({100*s['rate']:.1f}%)")
+        if catalog["worst_satellites"]:
+            print("  worst satellites:", ", ".join(
+                f"{w['satellite']}({w['n_outliers']})" for w in catalog["worst_satellites"][:8]))
 
     print(f"\n[done] outputs in {args.output_dir}  ({meta['runtime_sec']}s)")
     for k, v in paths.items():
