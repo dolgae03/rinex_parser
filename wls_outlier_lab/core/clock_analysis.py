@@ -484,8 +484,8 @@ def analyze_clock_stability(
         if worst.sum() >= 5:
             res.worst_geometry_pearson_r = _pearson(inst[worst], herr[worst])
 
-    # Lag-1: does instability now predict error at the next epoch? (What a filter
-    # that propagates the clock would suffer from.)
+    # Lag-1: does instability now predict error at the *next* epoch? A clock upset
+    # could plausibly show up one epoch late rather than immediately.
     if n >= 5:
         a, b = inst[:-1], herr[1:]
         lm = np.isfinite(a) & np.isfinite(b)

@@ -281,9 +281,12 @@ sub-metre demand breaks it — and the two independent routes agree, since the
 Doppler-measured 0.41 m/s of 1-second unpredictability is exactly the σ at which
 the constraint starts to bite.
 
-Caveat worth keeping: this holds for **snapshot WLS**. A filter that *propagates*
-the clock as a state with too tight a process noise is exactly the σ = 0.3 m
-column — there the same clock does hurt.
+Scope of the claim, stated in WLS terms: "harmless" means **harmless while the
+clock is a free per-epoch parameter**. The coasting sweep is the same engine with
+the clock constrained instead, and it shows where that stops being true — tighten
+the constraint past σ ≈ 1 m and this clock does hurt. Everything here, including
+the σ = 0.3 m row, is single-epoch WLS; nothing in this package propagates state
+between epochs.
 
 Outputs: `clock_analysis.csv` (now also n_sats, HDOP, clock sigma, Doppler drift),
 `clock_coasting.csv`, `clock_stability` + `clock_coasting` in `summary.json`;
@@ -356,10 +359,11 @@ detector (validation log):
 - **Ionosphere**: horizontal is best with tropo-only here; a denser-L5 dataset (or
   SBAS/PPP corrections) would let iono-free pay off. Both are wired in.
 - **Attitude** is an interface only (`sources/attitude.py`).
-- **Clock**: the conclusion (clock instability is harmless) is established for
-  *snapshot* WLS. Carrying it over to a filter that propagates the clock means
-  choosing a process noise no tighter than the measured ~0.4 m/s per second — the
-  σ = 0.3 m column of the coasting sweep shows what happens otherwise.
+- **Clock**: the conclusion (clock instability is harmless) is established for a
+  freely estimated per-epoch clock. If anything downstream ever constrains the
+  clock across epochs, the coasting sweep already gives the budget: keep the
+  constraint looser than the measured ~0.4 m/s per second of drift
+  unpredictability (σ ≳ 1 m at 1 Hz).
 - **BeiDou `sv_vel`** is corrupt for ~18% of rows upstream; fix it in the parser
   and the Doppler estimator can drop its aggressive rejection.
 ```
