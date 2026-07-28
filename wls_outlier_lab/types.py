@@ -137,6 +137,7 @@ class WlsSolution:
     vdop: float = float("nan")
     tdop: float = float("nan")
     sigma0_hat: float = float("nan")  # a-posteriori standard deviation of unit weight
+    clock_sigma_m: float = float("nan")  # formal sigma of the estimated clock bias
     converged: bool = False
     iterations: int = 0
     reason: str = ""  # populated when the epoch could not be solved

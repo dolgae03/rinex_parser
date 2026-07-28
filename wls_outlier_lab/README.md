@@ -57,6 +57,10 @@ A new dataset = a new `MeasurementSource` / `TruthSource`; the engine never chan
   2DRMS, 3D RMSE, availability, mean satellites used, HDOP.
 - `experiment` — `run_experiment` (baseline vs each detector, improvement table) and
   `constellation_ablation` (drop / keep-only each constellation).
+- `clock_analysis` — receiver-clock stability: drift and instability from the
+  per-epoch clock, an independent Doppler drift estimate, confounder-controlled
+  correlation against the horizontal error, and the `clock_coasting_experiment`
+  stress test. See the clock section below.
 
 ## Usage
 
@@ -73,6 +77,18 @@ python -m wls_outlier_lab.cli `
   --measurements phone_with_sv_pos.tsv `
   --truth-bestpos <..._BESTPOS.ASCII> `
   --output-dir results\session
+
+# Receiver clock study: instability analysis + the coasting stress test
+python -m wls_outlier_lab.cli `
+  --measurements <..._with_gt_ppp_aligned.tsv> --truth-columns `
+  --output-dir results\clock --detectors combined --no-ablation `
+  --clock-analysis --clock-coasting
+
+# ... and the weak-geometry version (one system, minimum satellites)
+python -m wls_outlier_lab.cli `
+  --measurements <...tsv> --truth-columns --constellations GPS `
+  --output-dir results\clock_gpsonly --detectors combined --no-ablation `
+  --no-calibrate --clock-coasting --coast-sat-budget 5
 ```
 
 Optional API: `uvicorn wls_outlier_lab.app:app --port 8020` → `POST /analyze`.
@@ -151,26 +167,143 @@ measurements arrive. On the validation log 6.8% of obs are flagged; QZSS is 67%
 (satellites QZSS-3 and QZSS-4, the broken ephemerides), the rest are low-elevation
 BeiDou near the horizon.
 
-## Clock-drift stability vs horizontal error (`core/clock_analysis.py`, `--clock-analysis`)
+## Clock-drift stability vs horizontal error (`core/clock_analysis.py`)
 
-Does the phone's clock-drift instability hurt the (horizontal) solution? From the
-per-epoch WLS clock bias we form drift `d(clk)/dt` and an instability metric
-(departure from a constant-drift extrapolation, in metres), flag anomalies, and
-correlate instability with the horizontal error vs truth. On the validation log:
+Does the phone's clock-drift instability hurt the horizontal solution? A plain
+correlation test is **not** enough to answer this, for two reasons, so the
+pipeline attacks it from four sides.
 
-- clock drift ≈ −242.6 m/s (≈ −0.81 ppm), instability mostly < 5 m with 17/359
-  anomaly spikes (up to ~35 m), clustered in one stretch of the drive;
-- correlation of instability with horizontal error: **Pearson −0.00, Spearman 0.08**;
-  horizontal error by instability quartile is flat (~2.0 / 1.9 / 2.2 / 2.2 m);
-  stable vs unstable epochs: 2.10 vs 1.88 m.
+### 1. Correlation, with the confounders removed (`--clock-analysis`)
 
-**Verdict: clock-drift instability does not drive the horizontal error here.** The
-per-epoch WLS re-estimates the clock every epoch and it is geometrically almost
-orthogonal to the horizontal (it maps into the vertical), so the clock absorbs
-its own instability. The pipeline still flags clock anomalies and would surface a
-coupling if one existed. Outputs: `clock_analysis.csv` + `clock_stability` in
-`summary.json`; `plot_wls_results.m` draws `matlab_clock_stability.png` (drift,
-instability with anomalies, instability-vs-error scatter, quartile bars).
+From the per-epoch WLS clock bias we form drift `d(clk)/dt` and an instability
+metric (departure from a constant-drift extrapolation, in metres), flag anomalies,
+and correlate instability against the horizontal error vs truth — plainly, and
+also partialling out HDOP and satellite count (which drive the error on their
+own), at lag 1, and inside the worst-geometry quartile.
+
+### 2. Is the "instability" even real? — noise floor + independent Doppler
+
+**First trap:** the clock is *estimated* each epoch, so its series carries
+estimation noise, and the instability metric is a second difference which
+amplifies it. The analysis reports the formal clock sigma and the instability a
+purely noisy clock would already show (`sqrt(6)·sigma_clk`). Second, it estimates
+the clock drift **independently from Doppler** (`doppler_clock_drift`: range rate
+`-(c/f)·doppler` against `u·(v_sv − v_rx) + drift`, one signal per satellite,
+iterated MAD rejection) and compares the two.
+
+### 3. The decisive test — clock coasting (`--clock-coasting`)
+
+**Second trap, the important one:** a freely estimated clock *absorbs its own
+instability by construction*, so `r ≈ 0` is the theoretically expected result and
+proves almost nothing. So we make the solution *depend* on clock stability: the
+clock is predicted as `clk_prev + drift_prev·dt` and imposed as a
+pseudo-observation with standard deviation `sigma` (`solve_epoch(clock_prior=…)`,
+which also makes an epoch solvable with one satellite fewer). Sweeping `sigma`
+from ∞ (free) down to 0.3 m finds the point where trusting the clock starts to
+cost accuracy — that point *is* the receiver's clock predictability.
+`--coast-sat-budget N` thins the sky to N satellites, and `--constellations GPS`
+restricts to one system, for the weak-geometry case where a clock constraint
+actually carries weight.
+
+The test is verified to be *sensitive* before being believed: unit tests confirm
+that a tight but wrong clock prior corrupts the fix, and that an injected 300 m
+clock jump makes the coasted solution >2× worse.
+
+### Result on the 2026-04-06 log (1079 epochs at 1 Hz, PPP truth)
+
+| measure | value |
+|---|---|
+| clock drift | −242.6 m/s (≈ −0.81 ppm), smooth ramp, **no ms jumps** |
+| Doppler-derived drift | −242.46 m/s (agrees to **0.14 m/s**), fit residual **0.012 m/s** |
+| real drift instability (Doppler) | **0.41 m/s per second** |
+| same from position-domain clock | 1.63 m/s — i.e. **4× inflated by estimation noise** |
+| clock estimate sigma | 3.2 m → a pure-noise clock would show 7.9 m of "instability", **4× more than observed** |
+| corr(instability, horizontal error) | Pearson 0.02, Spearman 0.02, partial (HDOP+n_sats) 0.04, lag-1 −0.00, worst-HDOP quartile 0.04, Doppler-based −0.00 / −0.05 |
+| horizontal error, stable vs unstable epochs | 2.80 vs 2.68 m |
+| 18/1079 instability anomalies | horizontal error 0.5–5.4 m, i.e. unremarkable (overall p95 is 4.5 m) |
+
+Coasting sweep (full sky, horizontal RMSE): free 3.00 m → σ=100/30/10 m all
+3.00 m → σ=3 m 3.01 m → σ=1 m 3.23 m → **σ=0.3 m 8.10 m**.
+
+The same sweep **restricted to GPS only with a 5-satellite budget** (weak geometry,
+minimum redundancy — so the result cannot be dismissed as an artifact of having 36
+satellites) has the identical shape, in median horizontal error: free 8.00 m →
+σ=100 m 8.01 → σ=30 m 7.98 → σ=10 m 8.11 → σ=3 m 9.13 → σ=1 m 11.48 →
+σ=0.3 m 32.65 m. Coasting is free down to σ ≈ 10 m; the error at 5 satellites is
+set by geometry, not by the clock.
+
+### Which clock anomalies are real?
+
+The position-domain instability flags 18/1079 epochs — but they land
+**where the car is moving** (67% of the flags, vs 28% of all epochs; median speed
+6.4 vs 0.0 m/s) and the independent Doppler drift barely moves at those epochs
+(0.79 vs 0.41 m/s median). So most of them are **estimation-noise false alarms
+from vehicle dynamics/multipath, not oscillator events**. The analysis therefore
+also flags anomalies on the Doppler drift (`is_dop_anomaly`, threshold from its
+own MAD) and reports how many the two detectors agree on: **35 Doppler anomalies
+(drift jerk > 2.18 m/s per second) vs 18 position-domain, only 7 in common.**
+**Use the Doppler flag** — its fit residual is 0.013 m/s versus metre-level noise
+in the position-domain clock.
+
+Note the two results are consistent, not contradictory: there *are* ~35 genuine
+clock-drift jerks, they are simply too small (≈ 2 m of clock motion) to matter
+next to 10–13 m pseudorange noise, and the free clock re-estimate absorbs them.
+So the answer to "can we find clock-drift anomalies?" is **yes, from Doppler** —
+and separately, "do they wreck the horizontal fix?" is **no**.
+
+### The event-based test — the strongest form of the answer
+
+The Doppler drift curve shows a genuine **clock disturbance episode from ~740 s to
+~1010 s**: the drift swings over −225 … −258 m/s and the jerk p95 reaches
+**8.05 m/s per second, 21× the quiet median (0.38 m/s)**. Satellite count and HDOP
+are identical inside and outside it (35.7 sats, HDOP 0.46 vs 0.48), so it is a
+clean natural experiment. Horizontal error:
+
+| | epochs | mean | median | p95 |
+|---|---|---|---|---|
+| quiet clock | 808 | 2.98 m | 3.04 m | 4.60 m |
+| **clock disturbed** | 271 | **2.26 m** | **2.17 m** | **4.12 m** |
+
+The error during the disturbance is not merely equal, it is **lower** (Welch
+t = −9.6). The clock is obviously not *improving* the fix — that difference comes
+from a confound (the car was driving in the open during that stretch rather than
+parked near obstructions). The point is that **a real 21× clock-drift disturbance
+produced zero horizontal degradation**, which is a much stronger statement than a
+null correlation.
+
+**Verdict: this phone's clock-drift instability does not degrade the horizontal
+solution — and now we know why, quantitatively.** Its clock is unpredictable by
+only ~0.4 m over one second, roughly **25× less than the pseudorange noise
+(10–13 m)**, so it is irrelevant to the fix; and the per-epoch WLS re-estimates
+the clock anyway, absorbing it. The coasting sweep locates the limit: the clock
+can be coasted at σ ≈ 1 m at under 10% cost (σ = 3 m is free), and only a
+sub-metre demand breaks it — and the two independent routes agree, since the
+Doppler-measured 0.41 m/s of 1-second unpredictability is exactly the σ at which
+the constraint starts to bite.
+
+Caveat worth keeping: this holds for **snapshot WLS**. A filter that *propagates*
+the clock as a state with too tight a process noise is exactly the σ = 0.3 m
+column — there the same clock does hurt.
+
+Outputs: `clock_analysis.csv` (now also n_sats, HDOP, clock sigma, Doppler drift),
+`clock_coasting.csv`, `clock_stability` + `clock_coasting` in `summary.json`;
+`plot_wls_results.m` draws `matlab_clock_stability.png` (drift from both sources,
+instability against its noise floor, scatter, quartiles) and
+`matlab_clock_coasting.png`.
+
+### Two data-quality findings this turned up
+
+- **BeiDou `sv_vel` is wrong in ~18% of rows** of this processed TSV — off by
+  hundreds of m/s, while GPS/Galileo/QZSS match `d(sv_pos)/dt` to 3 mm/s. It does
+  not affect pseudorange positioning (which ignores velocity) but it wrecks any
+  Doppler/velocity work, and it is why the Doppler estimator needs aggressive
+  rejection. Worth fixing upstream.
+- **The older `data/..._with_gt_rtk.tsv` truth for this same drive is offset
+  +25.8 m in height** (std 0.11 m) relative to this PPP-aligned truth — an
+  orthometric-vs-ellipsoidal datum mismatch (Korea's geoid undulation).
+  Horizontal agrees to ~1 m. So earlier vertical RMSE figures (~45–52 m) were
+  mostly this offset; with the PPP truth vertical RMSE is **19.8 m**. Horizontal
+  conclusions are unaffected.
 
 ## Applying it to the `samsung_3rd` Novatel session
 
@@ -223,4 +356,10 @@ detector (validation log):
 - **Ionosphere**: horizontal is best with tropo-only here; a denser-L5 dataset (or
   SBAS/PPP corrections) would let iono-free pay off. Both are wired in.
 - **Attitude** is an interface only (`sources/attitude.py`).
+- **Clock**: the conclusion (clock instability is harmless) is established for
+  *snapshot* WLS. Carrying it over to a filter that propagates the clock means
+  choosing a process noise no tighter than the measured ~0.4 m/s per second — the
+  σ = 0.3 m column of the coasting sweep shows what happens otherwise.
+- **BeiDou `sv_vel`** is corrupt for ~18% of rows upstream; fix it in the parser
+  and the Doppler estimator can drop its aggressive rejection.
 ```

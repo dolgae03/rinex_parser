@@ -159,8 +159,17 @@ def solve_epoch(
     config: Optional[WlsConfig] = None,
     reject: Optional[Iterable[SatId]] = None,
     x0: Optional[np.ndarray] = None,
+    clock_prior: Optional[Tuple[float, float]] = None,
 ) -> WlsSolution:
-    """Solve one epoch. ``reject`` names satellites (constellation, prn) to drop."""
+    """Solve one epoch. ``reject`` names satellites (constellation, prn) to drop.
+
+    ``clock_prior = (value_m, sigma_m)`` adds a pseudo-observation on the receiver
+    clock bias, i.e. *coasts* the clock instead of estimating it freely. That
+    turns the clock from a nuisance parameter into a constrained state, which is
+    the regime where clock instability can actually corrupt the position — see
+    ``core.clock_analysis.clock_coasting_experiment``. With a prior the epoch is
+    solvable with one satellite fewer.
+    """
     cfg = config or WlsConfig()
     reject_set: Set[SatId] = set(reject or ())
     signals = _pick_signals(obs, reject_set)
@@ -182,7 +191,11 @@ def solve_epoch(
     isb_cons = [c for c in cons_present if c != ref]
     isb_index = {c: 4 + i for i, c in enumerate(isb_cons)}
     n_unknown = 4 + len(isb_cons)
-    if len(signals) < n_unknown:
+    # A clock pseudo-observation contributes one row, so one satellite fewer suffices.
+    prior_ok = clock_prior is not None and all(math.isfinite(float(v)) for v in clock_prior) \
+        and float(clock_prior[1]) > 0.0
+    n_rows_extra = 1 if prior_ok else 0
+    if len(signals) + n_rows_extra < n_unknown:
         sol.reason = f"underdetermined ({len(signals)} obs < {n_unknown} unknowns)"
         sol.n_used = len(signals)
         return sol
@@ -264,6 +277,14 @@ def solve_epoch(
             s = max(1.4826 * float(np.median(np.abs(r - np.median(r)))), cfg.huber_floor_m)
             a = np.abs(r - np.median(r)) / s
             w = w * np.where(a <= cfg.huber_c, 1.0, cfg.huber_c / np.maximum(a, 1e-9))
+        if prior_ok:
+            # Pseudo-observation on the clock only: row = [0,0,0,1,0...]. Never
+            # Huber-reweighted (it is a prior, not a measurement of the sky).
+            prow = np.zeros((1, n_unknown))
+            prow[0, 3] = 1.0
+            G = np.vstack((G, prow))
+            r = np.append(r, float(clock_prior[0]) - clk)
+            w = np.append(w, 1.0 / (float(clock_prior[1]) ** 2))
         return G, r, w, elev
 
     def _wssr(r, w):
@@ -321,7 +342,7 @@ def solve_epoch(
     rx = state[:3]
 
     v = resid - G @ np.linalg.solve(G.T @ W @ G, G.T @ W @ resid)
-    dof = n - n_unknown
+    dof = n + n_rows_extra - n_unknown
     Ninv = np.linalg.inv(G.T @ W @ G)
     Qvv = np.diag(1.0 / w) - G @ Ninv @ G.T
     sigma0_hat = math.sqrt(max(float(v.T @ W @ v) / dof, 0.0)) if dof > 0 else float("nan")
@@ -336,6 +357,13 @@ def solve_epoch(
     sol.iterations = iterations
     sol.converged = converged
     sol.sigma0_hat = sigma0_hat
+    # Formal sigma of the clock estimate. With the weights carrying an absolute
+    # scale this is a-priori; scaling by sigma0_hat makes it a-posteriori, which is
+    # what we want when judging whether an apparent clock wobble is just
+    # estimation noise (core.clock_analysis).
+    qcc = float(Ninv[3, 3])
+    if qcc > 0 and math.isfinite(sigma0_hat):
+        sol.clock_sigma_m = sigma0_hat * math.sqrt(qcc)
     # Baarda w-test with a-priori unit variance: w_i = |v_i| / sqrt(Qvv_ii).
     # Using the a-priori sigma (not the contaminated sigma0_hat) stops a single
     # gross blunder from masking itself.

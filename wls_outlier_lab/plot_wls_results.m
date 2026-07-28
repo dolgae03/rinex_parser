@@ -228,14 +228,36 @@ function plot_wls_results(output_dir)
         anom = ck.is_anomaly == 1;
         f7 = figure('Color', 'w', 'Name', 'Clock stability', 'Position', [60 60 1200 780]);
 
+        hasDop = ismember('drift_dop_mps', ck.Properties.VariableNames) && ...
+                 any(isfinite(ck.drift_dop_mps));
+
         subplot(2, 2, 1);
-        plot(tt, ck.drift_mps, '-', 'Color', BLUE, 'LineWidth', 0.8); grid on;
+        plot(tt, ck.drift_mps, '-', 'Color', BLUE, 'LineWidth', 0.8); hold on; grid on;
+        leg = {'from WLS clock (position domain)'};
+        if hasDop
+            plot(tt, ck.drift_dop_mps, '-', 'Color', RED, 'LineWidth', 0.8);
+            leg{end+1} = 'from Doppler (independent)';
+            if ismember('is_dop_anomaly', ck.Properties.VariableNames)
+                da = ck.is_dop_anomaly == 1;
+                if any(da)
+                    scatter(tt(da), ck.drift_dop_mps(da), 45, 'k', 'filled');
+                    leg{end+1} = sprintf('Doppler clock anomaly (%d)', nnz(da));
+                end
+            end
+        end
+        legend(leg, 'Location', 'best', 'FontSize', 8);
         xlabel('time since start [s]'); ylabel('clock drift [m/s]');
         title('Receiver clock drift');
 
         subplot(2, 2, 2);
         plot(tt, ck.instability_m, '-', 'Color', [0.4 0.4 0.4], 'LineWidth', 0.7); hold on; grid on;
         scatter(tt(anom), ck.instability_m(anom), 40, 'r', 'filled');
+        % how much instability a purely noisy clock estimate would already show
+        if ismember('clk_sigma_m', ck.Properties.VariableNames) && any(isfinite(ck.clk_sigma_m))
+            noiseLvl = sqrt(6) * median(ck.clk_sigma_m, 'omitnan');
+            yline(noiseLvl, '--', sprintf('estimation-noise level (%.1f m)', noiseLvl), ...
+                  'Color', BLUE, 'LineWidth', 1.1, 'FontSize', 8);
+        end
         xlabel('time since start [s]'); ylabel('clock instability [m]');
         title(sprintf('Clock instability (%d anomalies)', nnz(anom)));
 
@@ -262,6 +284,49 @@ function plot_wls_results(output_dir)
         exportgraphics(f7, fullfile(output_dir, 'matlab_clock_stability.png'), 'Resolution', 130);
         fprintf('clock: median drift %.1f m/s, %d anomalies, Pearson r(inst,herr)=%.3f\n', ...
                 median(ck.drift_mps, 'omitnan'), nnz(anom), r(1, 2));
+    end
+
+    % ---- Figure 8: clock coasting — does the fix suffer when it trusts the clock? ----
+    co_file = fullfile(output_dir, 'clock_coasting.csv');
+    if isfile(co_file)
+        co = readtable(co_file, 'VariableNamingRule', 'preserve');
+        f8 = figure('Color', 'w', 'Name', 'Clock coasting', 'Position', [80 80 1100 460]);
+        isFree = strcmp(string(co.mode), "free");
+        lbl = string(co.mode);
+
+        subplot(1, 2, 1);
+        b = bar(categorical(lbl, lbl), co.h_rmse_m); grid on;
+        b.FaceColor = 'flat'; b.CData(isFree, :) = repmat([0.20 0.45 0.75], nnz(isFree), 1);
+        b.CData(~isFree, :) = repmat([0.85 0.33 0.10], nnz(~isFree), 1);
+        set(gca, 'TickLabelInterpreter', 'none');
+        ylabel('horizontal RMSE [m]');
+        title('Horizontal error vs how tightly the clock is constrained');
+        if any(isFree)
+            yline(co.h_rmse_m(find(isFree, 1)), '--', 'free clock', 'Color', [0.2 0.2 0.2]);
+        end
+
+        subplot(1, 2, 2);
+        sig = co.clock_sigma_m; fin = isfinite(sig);
+        if nnz(fin) >= 2
+            semilogx(sig(fin), co.h_rmse_m(fin), 'o-', 'Color', RED, 'LineWidth', 1.4, ...
+                     'MarkerFaceColor', RED); hold on; grid on;
+            if any(isFree)
+                yline(co.h_rmse_m(find(isFree, 1)), '--', 'free clock (no constraint)', ...
+                      'Color', BLUE, 'LineWidth', 1.2);
+            end
+            set(gca, 'XDir', 'reverse');
+            xlabel('clock constraint sigma [m]   (tighter ->)'); ylabel('horizontal RMSE [m]');
+            title('Flat = the clock is stable enough to coast on');
+        end
+        if co.sat_budget(1) > 0
+            budgetTxt = sprintf('%d satellites', co.sat_budget(1));
+        else
+            budgetTxt = 'all satellites';
+        end
+        sgtitle(sprintf('Clock coasting stress test (%s)', budgetTxt));
+        exportgraphics(f8, fullfile(output_dir, 'matlab_clock_coasting.png'), 'Resolution', 130);
+        fprintf('coasting: free H-RMSE %.2f m -> tightest %.2f m\n', ...
+                co.h_rmse_m(find(isFree, 1)), max(co.h_rmse_m(~isFree)));
     end
 
     fprintf('best detector: %s | H-RMSE %.2f m, CEP95 %.2f m, V-RMSE %.1f m\n', ...

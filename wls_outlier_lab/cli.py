@@ -23,7 +23,7 @@ from dataclasses import replace
 from pathlib import Path
 
 from .core.calibration import calibrate, measurement_residuals, outlier_catalog
-from .core.clock_analysis import analyze_clock_stability
+from .core.clock_analysis import analyze_clock_stability, clock_coasting_experiment
 from .core.detectors import DetectorConfig
 from .core.experiment import compare_ionosphere, constellation_ablation, run_experiment
 from .core.iono_free import form_iono_free
@@ -48,6 +48,9 @@ def build_arg_parser() -> argparse.ArgumentParser:
     p.add_argument("--bestpos-pos-types", default="NARROW_INT,INS_RTKFIXED",
                    help="comma list of BESTPOS pos types to accept (RTK-fixed default)")
     p.add_argument("--stride", type=int, default=1, help="keep every k-th epoch")
+    p.add_argument("--constellations", default=None,
+                   help="comma list of constellation names or ids to keep (e.g. GPS or 0). "
+                        "Useful for a single-system, weak-geometry stress test.")
     p.add_argument("--max-epochs", type=int, default=None)
     p.add_argument("--match-tolerance", type=float, default=0.5, help="truth match window [s]")
     p.add_argument("--detectors", default=None,
@@ -72,6 +75,13 @@ def build_arg_parser() -> argparse.ArgumentParser:
                    help="compare the nav solution under none/tropo/klobuchar/iono-free")
     p.add_argument("--clock-analysis", action="store_true",
                    help="analyze receiver clock-drift instability vs horizontal error")
+    p.add_argument("--clock-coasting", action="store_true",
+                   help="decisive test: constrain (coast) the clock and see whether the "
+                        "horizontal fix degrades — a free clock always absorbs its own "
+                        "instability, so correlation alone proves little")
+    p.add_argument("--coast-sat-budget", type=int, default=None,
+                   help="keep only the N strongest satellites in the coasting test "
+                        "(where a clock constraint actually carries weight)")
 
     p.add_argument("--no-ablation", action="store_true")
     p.add_argument("--no-calibrate", action="store_true",
@@ -88,7 +98,15 @@ def main(argv=None) -> int:
     t0 = time.time()
 
     print(f"[load] measurements: {args.measurements}")
-    epochs = load_epochs(args.measurements, stride=args.stride, max_epochs=args.max_epochs)
+    cons_filter = None
+    if args.constellations:
+        from .types import CONSTELLATION_NAMES
+        name_to_id = {v: k for k, v in CONSTELLATION_NAMES.items()}
+        cons_filter = [int(name_to_id.get(s.strip().upper(), s.strip()))
+                       for s in args.constellations.split(",") if s.strip()]
+        print(f"[load] constellation filter: {cons_filter}")
+    epochs = load_epochs(args.measurements, stride=args.stride, max_epochs=args.max_epochs,
+                         constellations=cons_filter)
     print(f"[load] {len(epochs)} epochs")
     if not epochs:
         print("no epochs loaded", file=sys.stderr)
@@ -161,6 +179,13 @@ def main(argv=None) -> int:
         clock = analyze_clock_stability(epochs, truth, wls_cfg=wls_cfg, dcfg=dcfg,
                                         match_tolerance_sec=args.match_tolerance)
 
+    coasting = None
+    if args.clock_coasting:
+        print("[run] clock coasting sweep (free -> tightly constrained clock) ...")
+        coasting = clock_coasting_experiment(epochs, truth, wls_cfg=wls_cfg, dcfg=dcfg,
+                                            match_tolerance_sec=args.match_tolerance,
+                                            sat_budget=args.coast_sat_budget)
+
     meta = {
         "measurements": str(args.measurements),
         "truth": truth_desc,
@@ -177,12 +202,14 @@ def main(argv=None) -> int:
                             "min_elevation_deg": args.min_elevation,
                             "residual_mad_k": args.residual_k,
                             "mad_floor_m": args.mad_floor},
+        "clock": {"analysis": args.clock_analysis, "coasting": args.clock_coasting,
+                  "coast_sat_budget": args.coast_sat_budget},
         "runtime_sec": None,
     }
     meta["runtime_sec"] = round(time.time() - t0, 2)
     paths = write_report(args.output_dir, result, ablation_rows=ablation, meta=meta,
                          make_plots=args.matplotlib_plots, calibration=calibration,
-                         catalog=catalog, clock=clock)
+                         catalog=catalog, clock=clock, coasting=coasting)
     if iono_cmp is not None:
         paths.update(write_iono_comparison(args.output_dir, iono_cmp))
 
@@ -199,12 +226,55 @@ def main(argv=None) -> int:
         print(f"  median drift {_n(clock.median_drift_mps,1)} m/s (~{_n(ppm,3)} ppm); "
               f"{clock.n_anomalies}/{clock.n_epochs} anomalies (instability > {_n(clock.instability_threshold_m,1)} m)")
         print(f"  corr(instability, horizontal err): pearson={_n(clock.pearson_r)}  spearman={_n(clock.spearman_r)}")
+        print(f"    controlling HDOP+n_sats (partial r)={_n(clock.partial_r)}   "
+              f"lag-1 r={_n(clock.lag1_pearson_r)}   worst-HDOP-quartile r={_n(clock.worst_geometry_pearson_r)}")
         print(f"  horizontal error   stable={_n(clock.stable_mean_h_m)} m   unstable={_n(clock.unstable_mean_h_m)} m")
-        sr = clock.spearman_r
-        verdict = ("weak/no correlation -> clock-drift instability does NOT drive horizontal error"
-                   if not (sr == sr) or abs(sr) < 0.2 else
+        print(f"  is the instability real? clock est. sigma={_n(clock.median_clk_sigma_m,2)} m -> "
+              f"pure-noise instability would be {_n(clock.noise_expected_inst_m,2)} m "
+              f"({_n(100*clock.noise_fraction,0)}% of observed)")
+        if clock.n_doppler_epochs:
+            print(f"  independent Doppler drift (sign={_n(clock.doppler_sign,0)}, "
+                  f"{clock.n_doppler_epochs} ep): median={_n(clock.drift_dop_median_mps,2)} m/s, "
+                  f"agreement with position-domain drift RMS={_n(clock.drift_agreement_rms_mps,2)} m/s")
+            print(f"    epoch-to-epoch drift change: doppler={_n(clock.dop_drift_change_scale_mps,3)} m/s "
+                  f"vs position-domain={_n(clock.pos_drift_change_scale_mps,3)} m/s")
+            print(f"    corr(doppler drift change, horizontal err): pearson={_n(clock.dop_pearson_r)}  "
+                  f"spearman={_n(clock.dop_spearman_r)}")
+            print(f"  clock anomalies: {clock.n_dop_anomalies} from Doppler "
+                  f"(> {_n(clock.dop_instability_threshold_mps,3)} m/s) vs {clock.n_anomalies} "
+                  f"from the position-domain clock; {clock.anomaly_agreement} agree "
+                  f"-> trust the Doppler flag (residual {_n(clock.doppler_resid_rms_mps,3)} m/s)")
+        rs = [r for r in (clock.spearman_r, clock.partial_r, clock.dop_spearman_r,
+                          clock.worst_geometry_pearson_r) if r == r]
+        strongest = max((abs(r) for r in rs), default=float("nan"))
+        verdict = ("no correlation on any measure -> clock-drift instability does NOT "
+                   "degrade the horizontal solution (free clock absorbs it)"
+                   if not (strongest == strongest) or strongest < 0.2 else
                    "correlation present -> clock instability may affect the horizontal solution")
-        print(f"  verdict: {verdict}")
+        print(f"  verdict: {verdict} [strongest |r|={_n(strongest,3)}]")
+
+    if coasting:
+        print("\n=== Clock coasting: make the fix depend on clock stability ===")
+        budget = coasting[0].get("sat_budget") or 0
+        print(f"  (satellite budget: {budget or 'all'}; clock predicted as clk_prev + drift_prev*dt)")
+        print(f"{'mode':<14}{'hRMSE[m]':>10}{'hMed[m]':>9}{'h95[m]':>9}{'hMax[m]':>9}{'sats':>7}{'coasted':>9}")
+        free = next((r for r in coasting if r["mode"] == "free"), None)
+        for r in coasting:
+            print(f"{r['mode']:<14}{_n(r['h_rmse_m']):>10}{_n(r['h_median_m']):>9}{_n(r['h_p95_m']):>9}"
+                  f"{_n(r['h_max_m']):>9}{_n(r['mean_sats'],1):>7}{r['n_coasted']:>9}")
+        tight = [r for r in coasting if r["mode"] != "free" and r["h_rmse_m"] == r["h_rmse_m"]]
+        if free and tight and free["h_median_m"] == free["h_median_m"]:
+            # Compare on the median: with a weak sky the free-clock RMSE can be
+            # dominated by a few divergent epochs and hide the trend.
+            worst = max(tight, key=lambda r: r["h_median_m"])
+            ratio = worst["h_median_m"] / free["h_median_m"] if free["h_median_m"] else float("nan")
+            print(f"  tightest constraint costs {_n(ratio,2)}x the free-clock median horizontal error "
+                  f"({_n(free['h_median_m'])} -> {_n(worst['h_median_m'])} m at {worst['mode']})")
+            flat = [r for r in tight if r["h_median_m"] <= free["h_median_m"] * 1.10]
+            if flat:
+                loosest = min(flat, key=lambda r: r["clock_sigma_m"])
+                print(f"  the clock can be coasted down to sigma = {_n(loosest['clock_sigma_m'],2)} m "
+                      f"at <10% cost -> that is this receiver's 1-epoch clock predictability")
 
     if iono_cmp is not None:
         print("\n=== Horizontal nav solution by ionosphere treatment (detector=combined) ===")
