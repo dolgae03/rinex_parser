@@ -53,6 +53,7 @@ class SatObs:
     pr_correction_m: float = 0.0
     doppler_hz: float = float("nan")
     cn0_dbhz: float = float("nan")
+    phase_cycle: float = float("nan")  # accumulated carrier phase [cycles]
     loi: bool = False
     iono_delay_m: float = 0.0
     # Broadcast Klobuchar coefficients (per-epoch; identical across sats of an

@@ -12,6 +12,13 @@ from wls_outlier_lab.types import Epoch, SatObs, TruthSample, TruthTrack
 
 RX_LLA = (37.2557, 127.0553, 40.0)
 
+# Satellite constellation geometry is anchored at this instant; with
+# ``drift_mps`` set, satellites actually move with their velocity for other
+# ``t_sec`` values, so code, carrier-less Doppler and geometry stay consistent
+# across a multi-epoch scene (a static constellation with nonzero Doppler
+# would be an internal contradiction the DCD factor rightly flags).
+T_REF = 1_459_488_809.0
+
 
 def rx_ecef() -> np.ndarray:
     return frames.lla_to_ecef(*RX_LLA)
@@ -56,14 +63,10 @@ def make_epoch(
             az = (cons * 37 + i * (360.0 / max(count, 1))) % 360.0
             el = 12.0 + (i * 71.0) % 73.0
             sat = _sat_at(rx, az, el)
-            geo = float(np.linalg.norm(sat - rx))
-            bias = isb.get(cons, 0.0)
-            err = blunders.get((cons, i + 1), 0.0)
-            n = rng.normal(0, noise_m) if noise_m > 0 else 0.0
-            pr = geo + clk_m + bias + err + n
             f_hz = 1575420000.0
             sv_vel = None
             dop_hz = float("nan")
+            v = None
             if drift_mps is not None:
                 # velocity perpendicular to the geocentric radius, ~3 km/s
                 radial = sat / np.linalg.norm(sat)
@@ -73,6 +76,13 @@ def make_epoch(
                 v = 3000.0 * (math.cos(math.radians(az)) * tang
                               + math.sin(math.radians(az)) * np.cross(radial, tang))
                 sv_vel = (float(v[0]), float(v[1]), float(v[2]))
+                sat = sat + v * (t_sec - T_REF)
+            geo = float(np.linalg.norm(sat - rx))
+            bias = isb.get(cons, 0.0)
+            err = blunders.get((cons, i + 1), 0.0)
+            n = rng.normal(0, noise_m) if noise_m > 0 else 0.0
+            pr = geo + clk_m + bias + err + n
+            if drift_mps is not None:
                 u = (sat - rx) / geo
                 rdot = float(np.dot(u, v)) + drift_mps
                 if doppler_noise_mps > 0:

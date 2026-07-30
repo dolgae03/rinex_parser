@@ -187,6 +187,23 @@ def write_report(
     return paths
 
 
+def write_factor_epochs(output_dir: str | Path, rows: List[Dict[str, float]]) -> Dict[str, str]:
+    """Per-epoch factor matrix consumed by MATLAB (factor_correlation_analysis.m)."""
+    from .core.factor_features import FACTOR_COLUMNS
+
+    out = Path(output_dir)
+    out.mkdir(parents=True, exist_ok=True)
+    path = out / "factor_epochs.csv"
+    with path.open("w", newline="", encoding="utf-8") as fh:
+        w = csv.DictWriter(fh, fieldnames=FACTOR_COLUMNS, extrasaction="ignore",
+                           restval="")
+        w.writeheader()
+        for r in rows:
+            w.writerow({k: ("" if isinstance(v, float) and v != v else v)
+                        for k, v in r.items()})
+    return {"factor_epochs": str(path)}
+
+
 def write_iono_comparison(output_dir: str | Path, metrics_by_mode: Dict[str, object]) -> Dict[str, str]:
     """Write the ionosphere-treatment comparison table + per-mode per-epoch errors."""
     out = Path(output_dir)

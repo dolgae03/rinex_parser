@@ -61,6 +61,12 @@ A new dataset = a new `MeasurementSource` / `TruthSource`; the engine never chan
   per-epoch clock, an independent Doppler drift estimate, confounder-controlled
   correlation against the horizontal error, and the `clock_coasting_experiment`
   stress test. See the clock section below.
+- `factor_features` — one row of ~44 candidate factors per solved epoch
+  (geometry/DOP, C/N0 stats, post-fit residuals, clock b·ḃ·instability,
+  Doppler-Code Difference and Code-Carrier Divergence rates, truth dynamics) for
+  the factor-vs-error correlation study. Python only *extracts*; the statistics
+  and figures are implemented in MATLAB (`factor_correlation_analysis.m`).
+  Findings on the 2026-04-06 log: `REPORT_factor_correlation.md`.
 
 ## Usage
 
@@ -89,6 +95,14 @@ python -m wls_outlier_lab.cli `
   --measurements <...tsv> --truth-columns --constellations GPS `
   --output-dir results\clock_gpsonly --detectors combined --no-ablation `
   --no-calibrate --clock-coasting --coast-sat-budget 5
+
+# Factor-vs-error correlation study: export the per-epoch factor matrix ...
+python -m wls_outlier_lab.cli `
+  --measurements <..._with_gt_ppp_aligned.tsv> --truth-columns `
+  --output-dir results\factors --factor-export --clock-analysis `
+  --detectors combined --no-ablation --no-calibrate
+# ... then run the analysis (speed bins, correlations, bootstrap, figures) in MATLAB:
+#   addpath('wls_outlier_lab'); factor_correlation_analysis('results/factors')
 ```
 
 Optional API: `uvicorn wls_outlier_lab.app:app --port 8020` → `POST /analyze`.

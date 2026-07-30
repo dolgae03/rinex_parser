@@ -63,6 +63,7 @@ def _row_to_obs(row: Dict[str, str]) -> Optional[SatObs]:
         pr_correction_m=pr_corr if math.isfinite(pr_corr) else 0.0,
         doppler_hz=_f(row.get("doppler_hz")),
         cn0_dbhz=_f(row.get("snr_dbhz")),
+        phase_cycle=_f(row.get("phase_cycle")),
         loi=bool(int(loi_raw)) if math.isfinite(loi_raw) else False,
         iono_alpha=alpha,
         iono_beta=beta,

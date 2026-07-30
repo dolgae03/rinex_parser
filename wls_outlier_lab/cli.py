@@ -82,6 +82,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
     p.add_argument("--coast-sat-budget", type=int, default=None,
                    help="keep only the N strongest satellites in the coasting test "
                         "(where a clock constraint actually carries weight)")
+    p.add_argument("--factor-export", action="store_true",
+                   help="export the per-epoch factor matrix (DOP, C/N0, residuals, "
+                        "clock, Doppler-code difference, code-carrier divergence, "
+                        "dynamics) to factor_epochs.csv; the correlation study "
+                        "itself runs in MATLAB (factor_correlation_analysis.m)")
 
     p.add_argument("--no-ablation", action="store_true")
     p.add_argument("--no-calibrate", action="store_true",
@@ -186,6 +191,13 @@ def main(argv=None) -> int:
                                             match_tolerance_sec=args.match_tolerance,
                                             sat_budget=args.coast_sat_budget)
 
+    factor_rows = None
+    if args.factor_export:
+        print("[run] per-epoch factor matrix (for the MATLAB correlation study) ...")
+        from .core.factor_features import extract_factor_epochs
+        factor_rows = extract_factor_epochs(epochs, truth, wls_cfg=wls_cfg, dcfg=dcfg,
+                                            match_tolerance_sec=args.match_tolerance)
+
     meta = {
         "measurements": str(args.measurements),
         "truth": truth_desc,
@@ -212,6 +224,13 @@ def main(argv=None) -> int:
                          catalog=catalog, clock=clock, coasting=coasting)
     if iono_cmp is not None:
         paths.update(write_iono_comparison(args.output_dir, iono_cmp))
+    if factor_rows is not None:
+        from .reporting import write_factor_epochs
+        paths.update(write_factor_epochs(args.output_dir, factor_rows))
+        print(f"\n=== Factor matrix ===")
+        print(f"  {len(factor_rows)} epochs x {len(factor_rows[0]) if factor_rows else 0} columns")
+        print("  correlation study: run factor_correlation_analysis('"
+              f"{args.output_dir}') in MATLAB")
 
     print("\n=== Detector comparison (best first) ===")
     print(f"{'detector':<24}{'hRMSE[m]':>10}{'h95[m]':>9}{'vRMSE[m]':>10}"
